@@ -1,0 +1,53 @@
+<launch>
+
+<node pkg="mockamap" type="mockamap_node" name="mockamap_node" output="screen">
+  <param name="seed" type="int" value="5112"/>
+  <param name="update_freq" type="double" value="1.0"/>
+
+  <!--  box edge length, unit meter-->
+  <param name="resolution" type="double" value="0.25"/>
+
+  <!-- map size unit meter-->
+  <param name="x_length" type="int" value="40"/>
+  <param name="y_length" type="int" value="40"/>
+  <param name="z_length" type="int" value="15"/>
+
+  <param name="type" type="int" value="1"/>
+    <!-- 1 perlin noise parameters -->
+    <!-- complexity:    base noise frequency,
+                        large value will be complex
+                        typical 0.0 ~ 0.5 -->
+    <!-- fill:          infill persentage
+                        typical: 0.4 ~ 0.0 -->
+    <!-- fractal:       large value will have more detail-->
+    <!-- attenuation:   for fractal attenuation
+                        typical: 0.0 ~ 0.5 -->
+
+  <param name="complexity"    type="double" value="0.030"/>
+  <param name="fill"          type="double" value="0.085"/>
+  <param name="fractal"       type="int"    value="1"/>
+  <param name="attenuation"   type="double" value="0.2"/>
+</node>
+
+<!-- Launch RViz with the demo configuration -->
+<node name="rviz" pkg="rviz" type="rviz"
+  args="-d $(find rrtstar_ros)/rviz/mockamap_display.rviz"
+  />
+
+<node pkg="rrtstar_ros" type="rrtstar_ros_node" name="rrtstar_ros_node" output="screen">
+  <param name="file_location" type="string" value="/home/nvidia/px4_ws/src/rrtstar_pc_ros/rrtstar_ros/config/point.csv"/>
+  <param name="start_delay" type="double" value="1.0"/>
+  <param name="step_size" type="double" value="3.0"/>
+  <param name="obs_threshold" type="double" value="1.7"/>
+  <param name="random_multiplier" type="double" value="1.0"/>
+  <param name="line_search_division" type="int" value="3"/>
+  <param name="xybuffer" type="double" value="3.0"/>
+  <param name="zbuffer" type="double" value="5.0"/>
+  <remap from="/pcl" to="/mock_map"/>
+</node>
+
+<node pkg="rrtstar_ros" type="rrtstar_ros_visualization_node" name="rrtstar_ros_visualization" output="screen">
+
+</node>
+
+</launch>

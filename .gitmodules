@@ -1,0 +1,3 @@
+[submodule "mockamap"]
+	path = mockamap
+	url = https://github.com/HKUST-Aerial-Robotics/mockamap.git
