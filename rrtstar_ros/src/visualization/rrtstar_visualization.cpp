@@ -2,7 +2,7 @@
  * rrtstar_visualization.cpp
  *
  * ---------------------------------------------------------------------
- * Copyright (C) 2021 Matthew (matthewoots at gmail.com)
+ * Copyright (C) 2022 Matthew (matthewoots at gmail.com)
  *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
@@ -50,6 +50,9 @@ using namespace Eigen;
 
 ros::Publisher rrt_marker_pub;
 ros::Publisher start_end_marker_pub;
+ros::Publisher bs_marker_pub;
+
+ros::Subscriber bs_message;
 ros::Subscriber rrt_message;
 ros::Subscriber start_end_message;
 
@@ -60,7 +63,7 @@ void rrt_callback(const rrtstar_ros::rrt_array::ConstPtr &msg)
   visualization_msgs::Marker rrt_points, line_strip;
   rrt_points.header.frame_id = line_strip.header.frame_id = "/map";
   rrt_points.header.stamp = line_strip.header.stamp = ros::Time::now();
-  rrt_points.ns = line_strip.ns = "bspline_visualization_points";
+  rrt_points.ns = line_strip.ns = "rrt_visualization_points";
   rrt_points.action = line_strip.action = visualization_msgs::Marker::ADD;
   rrt_points.pose.orientation.w = line_strip.pose.orientation.w = 1.0;
 
@@ -72,11 +75,11 @@ void rrt_callback(const rrtstar_ros::rrt_array::ConstPtr &msg)
 
 
   // POINTS markers use x and y scale for width/height respectively
-  rrt_points.scale.x = 0.1;
-  rrt_points.scale.y = 0.1;
+  rrt_points.scale.x = 0.2;
+  rrt_points.scale.y = 0.2;
 
   // LINE_STRIP/LINE_LIST markers use only the x component of scale, for the line width
-  line_strip.scale.x = 0.08;
+  line_strip.scale.x = 0.1;
 
   // Points color
   rrt_points.color.g = 1.0f;
@@ -103,6 +106,58 @@ void rrt_callback(const rrtstar_ros::rrt_array::ConstPtr &msg)
 
   rrt_marker_pub.publish(rrt_points);
   rrt_marker_pub.publish(line_strip);
+}
+
+void bs_callback(const rrtstar_ros::rrt_array::ConstPtr &msg)
+{
+  rrtstar_ros::rrt_array rrt = *msg;
+
+  visualization_msgs::Marker cp_points, line_strip;
+  cp_points.header.frame_id = line_strip.header.frame_id = "/map";
+  cp_points.header.stamp = line_strip.header.stamp = ros::Time::now();
+  cp_points.ns = line_strip.ns = "bspline_visualization_points";
+  cp_points.action = line_strip.action = visualization_msgs::Marker::ADD;
+  cp_points.pose.orientation.w = line_strip.pose.orientation.w = 1.0;
+
+  cp_points.id = 0;
+  line_strip.id = 1;
+
+  cp_points.type = visualization_msgs::Marker::POINTS;
+  line_strip.type = visualization_msgs::Marker::LINE_STRIP;
+
+
+  // POINTS markers use x and y scale for width/height respectively
+  cp_points.scale.x = 0.2;
+  cp_points.scale.y = 0.2;
+
+  // LINE_STRIP/LINE_LIST markers use only the x component of scale, for the line width
+  line_strip.scale.x = 0.1;
+
+  // Points color
+  cp_points.color.r = 1.0f;
+  cp_points.color.g = 1.0f;
+  cp_points.color.a = 1.0f;
+
+  // Line strip color
+  line_strip.color.b = 1.0f;
+  line_strip.color.g = 1.0f;
+  line_strip.color.a = 1.0f;
+
+  int rrt_size = rrt.array.size();
+  // Create the vertices for the points and lines
+  for (int i = 0; i < rrt_size; i++)
+  {
+    geometry_msgs::Point p;
+    p.x = rrt.array[i].x;
+    p.y = rrt.array[i].y;
+    p.z = rrt.array[i].z;
+
+    cp_points.points.push_back(p);
+    line_strip.points.push_back(p);
+  }
+
+  bs_marker_pub.publish(cp_points);
+  bs_marker_pub.publish(line_strip);
 }
 
 void start_end_callback(const rrtstar_ros::start_end_markers::ConstPtr &msg)
@@ -167,10 +222,14 @@ int main( int argc, char** argv )
   
   n.param<int>("marker_size", _size, 4);
 
+  bs_marker_pub = n.advertise<visualization_msgs::Marker>(
+        "/bs_visualization_marker", 10);
   rrt_marker_pub = n.advertise<visualization_msgs::Marker>(
         "/rrt_visualization_marker", 10);
   start_end_marker_pub = n.advertise<visualization_msgs::Marker>(
         "/start_end_visualization_marker", 10);
+  bs_message = n.subscribe<rrtstar_ros::rrt_array>(
+        "/bs", 10, &bs_callback);      
   rrt_message = n.subscribe<rrtstar_ros::rrt_array>(
         "/rrt", 10, &rrt_callback);
   start_end_message = n.subscribe<rrtstar_ros::start_end_markers>(

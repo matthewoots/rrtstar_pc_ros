@@ -2,7 +2,7 @@
  * main.cpp
  *
  * ---------------------------------------------------------------------
- * Copyright (C) 2021 Matthew (matthewoots at gmail.com)
+ * Copyright (C) 2022 Matthew (matthewoots at gmail.com)
  *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
@@ -60,6 +60,7 @@ private:
     std::vector<Vector3d> rrt_list;
     ros::Publisher rrt_pub;
     ros::Publisher start_end_pub;
+    ros::Publisher bs_pub;
     ros::Publisher altered_pcl_pub;
     ros::Subscriber pcl_sub;
 
@@ -73,6 +74,7 @@ public:
         /** 
         * @brief Publisher of rrt points
         */
+        bs_pub = _nh.advertise<rrtstar_ros::rrt_array>("/bs", 10);
         rrt_pub = _nh.advertise<rrtstar_ros::rrt_array>("/rrt", 10);
         start_end_pub = _nh.advertise<rrtstar_ros::start_end_markers>("/start_end_markers", 10);
         altered_pcl_pub = _nh.advertise<sensor_msgs::PointCloud2>("/new_pcl", 10);
@@ -90,7 +92,7 @@ public:
         return;
     }
 
-    void path_message_wrapper_publisher()
+    void path_message_wrapper_publisher(Vector3d s)
     {
         rrtstar_ros::rrt_array msg; rrtstar_ros::rrt_data data;
 
@@ -101,7 +103,44 @@ public:
             msg.array.push_back(data);
         }
 
+        // Somehow the algorithm will miss the start data
+        data.x = s.x(); data.y = s.y(); data.z = s.z();
+        msg.array.push_back(data);
+
         rrt_pub.publish(msg);
+    }
+
+    void bspline_message_wrapper_publisher(int _order, Vector3d e)
+    {
+        rrtstar_ros::rrt_array msg; rrtstar_ros::rrt_data data;
+
+        int v_size = rrt_list.size();
+        MatrixXd wp = MatrixXd::Zero(3,v_size-1);
+        
+        for (int i = 0; i < v_size-1; i++)
+        {
+            wp(0,i) = rrt_list[i+1].x(); 
+            wp(1,i) = rrt_list[i+1].y(); 
+            wp(2,i) = rrt_list[i+1].z();
+        }
+
+        // Somehow the algorithm will miss the start data
+        // Since the nodes are counting backwards, hence the start point is the end point
+        Vector3d end_pose = e;
+
+        MatrixXd global_cp = _common_utils.setClampedPath(wp, 
+        4, 1, _order, end_pose);
+        VectorXd knots = _common_utils.setKnotsPath(global_cp, 1, _order);
+        std::vector<Vector3d> bs = _common_utils.updateFullPath(global_cp, 
+            1, _order, knots);
+
+        for (int i = 0; i < bs.size(); i++)
+        {
+            data.x = bs[i].x(); data.y = bs[i].y(); data.z = bs[i].z();
+            msg.array.push_back(data);
+        }
+
+        bs_pub.publish(msg);
     }
 
     void new_pcl_publisher()
@@ -161,9 +200,10 @@ int main(int argc, char **argv)
     double _obs_threshold;
     double _random_multiplier;
     int _line_search_division;
-    double _xybuffer;
-    double _zbuffer;
+    double _xybuffer, _zbuffer;
     double _start_delay;
+    double _min_height, _max_height;
+    double _bs_order;
 
     _nh.param<std::string>("file_location", _file_location, "/home");
     _nh.param<double>("step_size", _step_size, 1.0);
@@ -173,6 +213,11 @@ int main(int argc, char **argv)
     _nh.param<double>("xybuffer", _xybuffer, 1.0);
     _nh.param<double>("zbuffer", _zbuffer, 1.0);
     _nh.param<double>("start_delay", _start_delay, 1.0);
+
+    _nh.param<double>("min_height", _min_height, 1.0);
+    _nh.param<double>("max_height", _max_height, 1.0);
+
+    _nh.param<double>("bs_order", _bs_order, 1.0);
     
     // Sleep for 3 second to let mockamap initialise the map
     ros::Duration(_start_delay).sleep();
@@ -248,6 +293,7 @@ int main(int argc, char **argv)
         rrt.initialize(start[i], end[i], initiator.pc,
             _map_size, _origin,
             _step_size, _obs_threshold,
+            _min_height, _max_height,
             _line_search_division);
 
         rrt.run();
@@ -256,7 +302,9 @@ int main(int argc, char **argv)
         std::vector<Vector3d> path = rrt.path_extraction();
 
         initiator.set_rrt_array(path);
-        initiator.path_message_wrapper_publisher();
+
+        initiator.path_message_wrapper_publisher(start[i]);
+        initiator.bspline_message_wrapper_publisher(_bs_order, end[i]);
 
         ros::spin();
         //ros::Duration(20.0).sleep();

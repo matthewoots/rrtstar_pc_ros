@@ -2,7 +2,7 @@
  * rrtstar.h
  *
  * ---------------------------------------------------------------------
- * Copyright (C) 2021 Matthew (matthewoots at gmail.com)
+ * Copyright (C) 2022 Matthew (matthewoots at gmail.com)
  *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
@@ -82,6 +82,7 @@ class rrtstar
     double obs_threshold;
     int step_size, iter, total_nodes;
     int line_search_division;
+    double _min_height, _max_height;
 
     Vector3d map_size = Vector3d::Zero();
     Vector3d origin = Vector3d::Zero();    
@@ -103,11 +104,18 @@ class rrtstar
         Node* random_node = new Node;
         Node* step_node = new Node;
     
-        (random_node->position).x() = rand() % (int)round(map_size.x()) 
-            - map_size.x()/2 + 1;
-        (random_node->position).y() = rand() % (int)round(map_size.y()) 
-            - map_size.y()/2  + 1;
-        (random_node->position).z() = rand() % (int)round(map_size.z()) + 1;
+        (random_node->position).x() = (double)(rand() % 
+            (int)round(map_size.x()) * 100) / 
+            100.0 - map_size.x()/2 + origin.x() + 1;
+        (random_node->position).y() = (double)(rand() % 
+            (int)round(map_size.y()) * 100) / 
+            100.0 - map_size.y()/2 + origin.y() + 1;
+
+        // Constrain height within the min-max range
+        double tmp = (double)(rand() % (int)round(map_size.z()) * 100) / 100.0  - map_size.z()/2 + origin.z() + 1;
+        tmp = max(tmp, _min_height);
+        tmp = min(tmp, _max_height);
+        (random_node->position).z() = tmp;
 
         index = near_node(*random_node);
         
@@ -151,11 +159,12 @@ class rrtstar
         iter++;
 
         double final_secs =ros::Time::now().toSec() - prev;
-        printf("%squery (%lf %lf %lf) time taken (%lf)\n", KBLU, 
+        printf("%squery (%s%.2lf %.2lf %.2lf%s) time-taken (%s%.4lf%s)\n", 
+            KBLU, KNRM,
             random_node->position.x(),
             random_node->position.y(),
             random_node->position.z(),
-            final_secs);
+            KBLU, KNRM, final_secs, KBLU);
     }
 
     // [near_node] is responsible for finding the nearest node in the tree 
@@ -235,7 +244,7 @@ class rrtstar
         line_vector = MatrixXd::Zero(3, n);
         for (int i = 0; i < 3; i++)
         {
-            line_vector.row(i) = linspace(p[i], q[i], (double)n);
+            line_vector.row(i) = _common_utils.linspace(p[i], q[i], (double)n);
         }
         int column_size = line_vector.cols();
 
@@ -383,21 +392,6 @@ class rrtstar
         return false;
     }
 
-    VectorXd linspace(double min, double max, double n)
-    {
-        VectorXd linspaced((int)n);
-        double delta = (max - min) / (n - 1.0);
-        linspaced(0) = min;
-        
-        for (int i = 1; i < (int)n; i++)
-        {
-            linspaced(i) = (linspaced(i-1) + delta);
-        }
-        return linspaced;
-    }
-
-    
-
     // void initialize(Vector3d _start, 
     //     Vector3d _end, 
     //     sensor_msgs::PointCloud2 _pc,
@@ -436,6 +430,8 @@ class rrtstar
         Vector3d _origin,
         double _step_size,
         double _obs_threshold,
+        double min_height,
+        double max_height,
         int _line_search_division)
     {
         // printf("%s[rrtstar.h] Key Variables! \n", KBLU);
@@ -450,6 +446,9 @@ class rrtstar
         // obs(new pcl::PointCloud<pcl::PointXYZ>);
         obs = _pc;
         obs_threshold = _obs_threshold;
+
+        _min_height = min_height;
+        _max_height = max_height;
 
         // printf("%s[rrtstar.h] Map parameters! \n", KBLU);
         map_size = _map_size;

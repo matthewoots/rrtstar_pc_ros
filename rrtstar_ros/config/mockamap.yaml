@@ -1,0 +1,16 @@
+# Mockamap Parameters
+seed: 5115
+update_freq: 1.0
+
+## box edge length, unit meter
+resolution: 0.25
+
+## map size unit meter
+x_length: 40
+y_length: 40
+z_length: 15
+type: 1
+complexity: 0.025
+fill: 0.055
+fractal: 1
+attenuation: 0.2

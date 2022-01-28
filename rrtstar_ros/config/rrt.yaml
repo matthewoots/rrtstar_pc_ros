@@ -1,0 +1,15 @@
+# RRT Parameters
+start_delay: 3.0
+step_size: 3.0
+obs_threshold: 2.3
+random_multiplier: 1.0
+line_search_division: 2
+
+xybuffer: 3.0
+zbuffer: 5.0
+
+min_height: 1.0
+max_height: 10.0
+
+## Bspline Parameters
+bs_order: 5

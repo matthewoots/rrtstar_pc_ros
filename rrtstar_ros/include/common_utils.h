@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "csv.h"
+#include "bspline.h"
 
 #include <pcl/filters/passthrough.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -53,6 +54,8 @@
 
 using namespace Eigen;
 using namespace std;
+
+bs::bspline _bsp;
 
 class common_utility
 {
@@ -171,6 +174,94 @@ public:
         
         return boundary;
     }
+
+    VectorXd linspace(double min, double max, double n)
+    {
+        VectorXd linspaced((int)n);
+        double delta = (max - min) / (n - 1.0);
+        linspaced(0) = min;
+        
+        for (int i = 1; i < (int)n; i++)
+        {
+            linspaced(i) = (linspaced(i-1) + delta);
+        }
+        return linspaced;
+    }
     
+    MatrixXd setClampedPath(MatrixXd wp, 
+        double max_vel, double _knot_span, int _order, 
+        Vector3d start_pose) 
+    {
+        /* 
+        * Uniform Distribution
+        */
+        MatrixXd cp_raw = MatrixXd::Zero(3,1); VectorXd time_waypoint = VectorXd::Zero(1);
+
+        _bsp.UniformDistribution(start_pose, wp, max_vel, _knot_span, 
+            &time_waypoint, &cp_raw);
+        std::cout << KYEL << "[common_utils.h] " << "Uniform Distribution Complete" << KNRM << std::endl;
+
+        /* 
+        * Clamp the Bspline
+        */
+        // Update global control points and start and end time 
+        MatrixXd _global_cp = _bsp.ClampBspline(_order, cp_raw);
+        std::cout << KYEL << "[common_utils.h] " << "Clamping Bspline" << KNRM << std::endl;
+
+        return _global_cp;
+    }
+
+
+    VectorXd setKnotsPath(MatrixXd _global_cp, double   _knot_span, int _order)
+    {
+        double _start = ros::Time::now().toSec();
+        double _end = _start + ((_global_cp.cols() - (_order)) * _knot_span);
+        MatrixXd _fixed_knots_tmp = linspace(_start, _end, (double)(_global_cp.cols() - (_order-1)));
+
+        return _fixed_knots_tmp.row(0);
+    }
+
+
+    /** 
+    * @brief Update Full Path
+    */
+    std::vector<Vector3d> updateFullPath(MatrixXd _global_cp, int _knotdiv, int _order, VectorXd _fixed_knots)
+    {
+        // Reset pos, vel, acc and time
+        MatrixXd _pos = MatrixXd::Zero(3,1); 
+        MatrixXd _vel = MatrixXd::Zero(3,1); 
+        MatrixXd _acc = MatrixXd::Zero(3,1); 
+        VectorXd _time = VectorXd::Zero(1);
+
+        // Truncate control points from global to local
+        MatrixXd _local_cp = MatrixXd::Zero(3,_global_cp.cols());
+
+        for(int i = 0; i < _local_cp.cols(); i++)
+        {
+            _local_cp.col(i) = _global_cp.col(i);
+        }
+
+        double start = _fixed_knots(0); 
+        double end = _fixed_knots(_fixed_knots.size()-1);
+
+        // Bspline Creation using Function
+        _bsp.GetBspline3(_order, _local_cp, start, end, _knotdiv, &_pos, &_vel, &_acc, &_time);
+
+        std::cout << KYEL << "[common_utils.h] " << "Full Path Update Complete" << KNRM << std::endl;
+
+        int pos_size = _pos.cols();
+        std::vector<Vector3d> tmp;
+        for (int i = 0; i < pos_size; i++)
+        {
+            Vector3d tmp_v;
+            tmp_v.x() = _pos.col(i).x();
+            tmp_v.y() = _pos.col(i).y();
+            tmp_v.z() = _pos.col(i).z();
+
+            tmp.push_back(tmp_v);
+        }
+
+        return tmp;
+    }
 
 };

@@ -1,9 +1,11 @@
 # RRT* ON POINTCLOUD FOR ROS
-Development of RRT* on ROS using `sensor_msgs::PointCloud2` received MOCKAMAP by HKUST (https://github.com/HKUST-Aerial-Robotics/mockamap) from developed on ROS
+Development of RRT* on ROS using `sensor_msgs::PointCloud2` received from `mockamap` by **HKUST** (https://github.com/HKUST-Aerial-Robotics/mockamap)
+
+Using custom generalized `Bspline` used in https://github.com/matthewoots/px4-path-planner to generate a b-spline path within the RRT
 
 ```cpp
-// Solution found! with 270 iter and 23 nodes
-// Total Time Taken = 1.297857s!
+// Solution found! with 330 iter and 29 nodes
+// Total Time Taken = 1.579208!
 ```
 ![](output.png)
 
@@ -28,7 +30,7 @@ mkdir -p rrt_ws/src
 cd rrt_ws/src
 git clone https://github.com/matthewoots/rrtstar_pc_ros.git --recurse-submodules
 cd ..
-catkin build
+catkin build -j1 #or else ros_message will not be build properly
 ```
 ### Launch
 ```
