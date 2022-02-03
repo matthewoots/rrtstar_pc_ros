@@ -121,13 +121,13 @@ public:
         Vector3d centroid, Vector3d dimension)
     {
         pcl::PCLPointCloud2 pcl_pc2;
-        printf("%s[rrtstar.h] ros_pcl2 to pcl! \n", KBLU);
+        // printf("%s[rrtstar.h] ros_pcl2 to pcl! \n", KBLU);
         pcl_conversions::toPCL(_pc, pcl_pc2);
 
         pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_cloud(new pcl::PointCloud<pcl::PointXYZ>);
         pcl::PointCloud<pcl::PointXYZ>::Ptr output(new pcl::PointCloud<pcl::PointXYZ>);
         
-        printf("%s[rrtstar.h] fromPCLPointCloud2! \n", KBLU);
+        // printf("%s[rrtstar.h] fromPCLPointCloud2! \n", KBLU);
         pcl::fromPCLPointCloud2(pcl_pc2, *tmp_cloud);
         
         float minX = centroid.x() - dimension.x()/2;
@@ -146,7 +146,36 @@ public:
         box_filter.setInputCloud(tmp_cloud);
         box_filter.filter(*output);
 
-        printf("%s[rrtstar.h] return fromPCLPointCloud2! \n", KBLU);
+        // printf("%s[rrtstar.h] return fromPCLPointCloud2! \n", KBLU);
+        return output;
+    }
+
+    /* 
+    * @brief Filter point cloud with the dimensions given
+    */
+    pcl::PointCloud<pcl::PointXYZ>::Ptr 
+        pcl2_filter_ptr(pcl::PointCloud<pcl::PointXYZ>::Ptr _pc, 
+        Vector3d centroid, Vector3d dimension)
+    {   
+        pcl::PointCloud<pcl::PointXYZ>::Ptr output(new pcl::PointCloud<pcl::PointXYZ>);
+
+        float minX = centroid.x() - dimension.x()/2;
+        float maxX = centroid.x() + dimension.x()/2;
+
+        float minY = centroid.y() - dimension.y()/2;
+        float maxY = centroid.y() + dimension.y()/2;
+
+        float minZ = centroid.z() - dimension.z()/2;
+        float maxZ = centroid.z() + dimension.z()/2;
+
+        pcl::CropBox<pcl::PointXYZ> box_filter;
+        box_filter.setMin(Eigen::Vector4f(minX, minY, minZ, 1.0));
+        box_filter.setMax(Eigen::Vector4f(maxX, maxY, maxZ, 1.0));
+
+        box_filter.setInputCloud(_pc);
+        box_filter.filter(*output);
+
+        // printf("%s[rrtstar.h] return fromPCLPointCloud2! \n", KBLU);
         return output;
     }
 

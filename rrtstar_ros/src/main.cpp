@@ -257,6 +257,8 @@ int main(int argc, char **argv)
             start[i].x() = start[i].x() + ((double)(rand() % 100) / 100.0 - 0.5) * _random_multiplier;
             start[i].y() = start[i].y() + ((double)(rand() % 100) / 100.0 - 0.5) * _random_multiplier;
             start[i].z() = start[i].z() + ((double)(rand() % 100) / 100.0 - 0.5) * _random_multiplier;
+            start[i].z() = max(start[i].z(), _min_height);
+            start[i].z() = min(start[i].z(), _max_height);
         }
 
         // kdtree_pcl return true if there is a point nearby
@@ -266,6 +268,8 @@ int main(int argc, char **argv)
             end[i].x() = end[i].x() + ((double)(rand() % 100) / 100.0 - 0.5) * _random_multiplier;
             end[i].y() = end[i].y() + ((double)(rand() % 100) / 100.0 - 0.5) * _random_multiplier;
             end[i].z() = end[i].z() + ((double)(rand() % 100) / 100.0 - 0.5) * _random_multiplier;
+            end[i].z() = max(end[i].z(), _min_height);
+            end[i].z() = min(end[i].z(), _max_height);
         }
 
         printf("%s[main.cpp] Start (%lf %lf %lf) End (%lf %lf %lf) \n", 
@@ -273,12 +277,15 @@ int main(int argc, char **argv)
             end[i].x(), end[i].y(), end[i].z());
 
         // Map size and origin should be determined and isolated 
+        // Find a way to rotate the boundary so that we can minimize the space
         _map_size = _common_utils.findBoundary(start[i], end[i], _xybuffer, _zbuffer);
         _origin = _common_utils.findCentroid(start[i], end[i]);
 
+        double crop_timer = ros::Time::now().toSec();
         // We can crop the pointcloud to the dimensions that we are using
         initiator.pc = _common_utils.pcl2_filter(initiator.pcl_pc2, _origin, _map_size);
         initiator.actual_pc = _common_utils.pcl2_converter(initiator.pcl_pc2);
+        printf("%s[main.cpp] Time taken to crop obstacle %lf! \n", KGRN, ros::Time::now().toSec() - crop_timer);
     }
     // We can advertise the start and end as markers
     initiator.points_message_wrapper_publisher(start, end);
@@ -297,6 +304,12 @@ int main(int argc, char **argv)
             _line_search_division);
 
         rrt.run();
+
+        if (rrt.process_status())
+        {
+            printf("%s[main.cpp] Will not continue bspline and publishing process! %s\n", KRED, KNRM);
+            return 0;
+        }
 
         // Extract path
         std::vector<Vector3d> path = rrt.path_extraction();

@@ -73,12 +73,13 @@ class rrtstar
         Vector3d position;
     };
 
+    constexpr static int max_nodes = 300;
     Node start_node;
     Node end_node;
-    Node* nodes[5000]; // ?? need to clean this up
+    Node* nodes[max_nodes]; // ?? need to clean this up
     pcl::PointCloud<pcl::PointXYZ>::Ptr obs;
 
-    bool reached;
+    bool reached, error;
     double obs_threshold;
     int step_size, iter, total_nodes;
     int line_search_division;
@@ -250,12 +251,38 @@ class rrtstar
 
         for(int i = 0; i < column_size; i++)
         {
+            Vector3d tmp;
+            pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_obs;
+
+            tmp.x() = line_vector.col(i).x();
+            tmp.y() = line_vector.col(i).y();
+            tmp.z() = line_vector.col(i).z();
+
             // Check to see whether the point in the line 
             // collides with an obstacle
+            
+
+            // ------ Optimization on PCL ------
+            tmp_obs = _common_utils.pcl2_filter_ptr(obs, tmp, 
+                Vector3d(2*step_size, 2*step_size, 2*step_size));
+            size_t num_points = tmp_obs->size();
+            int total = static_cast<int>(num_points);
+            if (num_points == 0)
+                continue;
+
+            if (kdtree_pcl(line_vector.col(i), tmp_obs, obs_threshold))
+                return false;
+
+            // -------- Original on PCL (2) ------
+            // ---- (1) is 20-100x faster than (2) -----
+            // if (kdtree_pcl(line_vector.col(i), obs, obs_threshold))
+            //     return false;
+
+            // -------- Original on PCL (3) ------
+            // ---- (2) is 100x faster than (3) -----
             // if (obstacle_map_filter(line_vector.col(i)))
             //     return false;
-            if (kdtree_pcl(line_vector.col(i), obs, obs_threshold))
-                return false;
+
             // Check to see whether the line is within the boundaries
             // Don't think we need this check
             // if((i<0) || (i>400) || (j1<0) || (j1>400) || (j2<0) || (j2>400))
@@ -439,6 +466,8 @@ class rrtstar
         start_node.parent = NULL;
         total_nodes = 0;
 
+        error = false;
+
         nodes[total_nodes++] = &start_node;
         end_node.position = _end;
 
@@ -465,10 +494,21 @@ class rrtstar
         size_t num_points = obs->size();
         int total = static_cast<int>(num_points);
         double prev = ros::Time::now().toSec();
+        double fail_timer = ros::Time::now().toSec();
         printf("%s[rrtstar.h] Obstacle size %d! \n", KGRN, total);
         printf("%s[rrtstar.h] Start run process! \n", KGRN);
+        
         while(!reached)
+        {
             rrt();
+            if (total_nodes > max_nodes || ros::Time::now().toSec() - fail_timer > 10.0)
+            {
+                printf("%s[rrtstar.h] Failed run process! \n", KRED);
+                printf("%s[rrtstar.h] Exceeded max nodes or runtime too long! \n", KRED);
+                error = true;
+                break;
+            }
+        }
         printf("%sSolution found! with %d iter and %d nodes\n", 
             KGRN, iter, total_nodes);
         printf("%sTotal Time Taken = %lf!\n", KGRN, ros::Time::now().toSec() - prev);
@@ -493,5 +533,10 @@ class rrtstar
         }
 
         return path;
+    }
+
+    bool process_status()
+    {
+        return error;
     }
 };
