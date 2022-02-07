@@ -36,12 +36,20 @@
 #include <pcl/filters/passthrough.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/point_cloud_conversion.h>
+#include <geometry_msgs/TransformStamped.h>
+#include <geometry_msgs/Quaternion.h>
+#include <geometry_msgs/Vector3.h>
+#include <geometry_msgs/Point.h>
 
 #include <pcl_ros/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/filters/crop_box.h>
+
+#include <tf2_sensor_msgs/tf2_sensor_msgs.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 #define KNRM  "\033[0m"
 #define KRED  "\033[31m"
@@ -151,6 +159,88 @@ public:
     }
 
     /* 
+    * @brief Transform sensor cloud according to the translation and rpy given
+    */
+    sensor_msgs::PointCloud2 transform_sensor_cloud(sensor_msgs::PointCloud2 _pc,
+        Vector3d _rpy, Vector3d _translation)
+    {
+        sensor_msgs::PointCloud2 transformed_cloud;
+
+        geometry_msgs::TransformStamped transform;
+        geometry_msgs::Quaternion q; geometry_msgs::Vector3 t;
+        tf2::Quaternion quat_tf;
+
+        t.x = _translation.x(); t.y = _translation.y(); t.z = _translation.z(); 
+
+        double deg2rad = 1.0 / 180.0 * 3.1415926535;
+
+        quat_tf.setRPY(_rpy.x() * deg2rad, 
+            _rpy.y() * deg2rad, 
+            _rpy.z() * deg2rad); // Create this quaternion from roll/pitch/yaw (in radians)
+        q = tf2::toMsg(quat_tf);
+
+        transform.transform.translation = t;
+        transform.transform.rotation = q;
+        transform.child_frame_id = "/base";
+        transform.header.frame_id = "/map";
+
+        tf2::doTransform(_pc, transformed_cloud, transform);
+
+        return transformed_cloud;
+    }
+
+    geometry_msgs::Point vector_to_point(Vector3d v)
+    {
+        geometry_msgs::Point tmp;
+        tmp.x = v.x(); 
+        tmp.y = v.y(); 
+        tmp.z = v.z();
+
+        return tmp;
+    }
+
+    Vector3d point_to_vector(geometry_msgs::Point p)
+    {
+        Vector3d tmp;
+        tmp.x() = p.x; 
+        tmp.y() = p.y; 
+        tmp.z() = p.z;
+
+        return tmp;
+    }
+
+    /* 
+    * @brief Transform pose cloud according to the translation and rpy given
+    */
+    geometry_msgs::Point transform_point(geometry_msgs::Point _p,
+        Vector3d _rpy, Vector3d _translation)
+    {
+        geometry_msgs::Point point;
+
+        geometry_msgs::TransformStamped transform;
+        geometry_msgs::Quaternion q; geometry_msgs::Vector3 t;
+        tf2::Quaternion quat_tf;
+
+        t.x = _translation.x(); t.y = _translation.y(); t.z = _translation.z(); 
+
+        double deg2rad = 1.0 / 180.0 * 3.1415926535;
+
+        quat_tf.setRPY(_rpy.x() * deg2rad, 
+            _rpy.y() * deg2rad, 
+            _rpy.z() * deg2rad); // Create this quaternion from roll/pitch/yaw (in radians)
+        q = tf2::toMsg(quat_tf);
+
+        transform.transform.translation = t;
+        transform.transform.rotation = q;
+        transform.child_frame_id = "/base";
+        transform.header.frame_id = "/map";
+
+        tf2::doTransform(_p, point, transform);
+
+        return point;
+    }
+
+    /* 
     * @brief Filter point cloud with the dimensions given
     */
     pcl::PointCloud<pcl::PointXYZ>::Ptr 
@@ -194,11 +284,11 @@ public:
     /* 
     * @brief Find dimensions of a line with ability to add buffer
     */
-    Vector3d findBoundary(Vector3d p, Vector3d q, double xy_buffer, double z_buffer)
+    Vector3d findBoundary(Vector3d p, Vector3d q, double passage_size, double xy_buffer, double z_buffer)
     {
         Vector3d boundary;
         boundary.x() = abs(p.x() - q.x()) + xy_buffer;
-        boundary.y() = abs(p.y() - q.y()) + xy_buffer;
+        boundary.y() = abs(p.y() - q.y()) + xy_buffer + passage_size;
         boundary.z() = abs(p.z() - q.z()) + z_buffer;
         
         return boundary;

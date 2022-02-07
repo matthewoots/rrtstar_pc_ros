@@ -5,24 +5,24 @@ update_freq: 0.5
 resolution: 0.25
 
 ## Perlin Noise
-# type: 1
-# seed: 5115
-complexity: 0.1
-fill: 0.2
+type: 1
+seed: 5112
+complexity: 0.03
+fill: 0.074
 fractal: 1
-attenuation: 0.2
-## map size unit meter
-# x_length: 40
-# y_length: 40
-# z_length: 15
-
-## Pillars
-type: 2
-seed: 111
-width_min: 1.5
-width_max: 1.5
-obstacle_number: 70
+attenuation: 0.3
 ## map size unit meter
 x_length: 40
 y_length: 40
 z_length: 15
+
+## Pillars
+# type: 2
+# seed: 111
+# width_min: 1.5
+# width_max: 1.5
+# obstacle_number: 70
+## map size unit meter
+#x_length: 40
+#y_length: 40
+#z_length: 15

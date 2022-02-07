@@ -1,12 +1,13 @@
 # RRT Parameters
 start_delay: 3.0
 step_size: 3.0
-obs_threshold: 2.3
+obs_threshold: 1.5
 random_multiplier: 1.0
 line_search_division: 3
 
 xybuffer: 3.0
-zbuffer: 6.0
+zbuffer: 4.0
+passage_size: 10.0
 
 min_height: 1.5
 max_height: 7.0

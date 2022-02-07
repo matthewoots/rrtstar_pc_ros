@@ -105,6 +105,7 @@ class rrtstar
         Node* random_node = new Node;
         Node* step_node = new Node;
     
+        srand((unsigned)ros::Time::now().toNSec());
         (random_node->position).x() = (double)(rand() % 
             (int)round(map_size.x()) * 100) / 
             100.0 - map_size.x()/2 + origin.x() + 1;

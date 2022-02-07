@@ -58,14 +58,19 @@ class initiator
 private:
     ros::NodeHandle _nh;
     std::vector<Vector3d> rrt_list;
-    ros::Publisher rrt_pub;
-    ros::Publisher start_end_pub;
-    ros::Publisher bs_pub;
-    ros::Publisher altered_pcl_pub;
+    ros::Publisher rrt_pub, start_end_pub, bs_pub;
+    ros::Publisher altered_pcl_pub, transformed_pcl_pub;
+    ros::Publisher origin_pub;
+
     ros::Subscriber pcl_sub;
+
+    geometry_msgs::Point origin;
 
 public:
     sensor_msgs::PointCloud2 pcl_pc2;
+    sensor_msgs::PointCloud2 pc_original_frame;
+    sensor_msgs::PointCloud2 pcl_pc2_transformed;
+
     pcl::PointCloud<pcl::PointXYZ>::Ptr pc;
     pcl::PointCloud<pcl::PointXYZ>::Ptr actual_pc;
 
@@ -77,13 +82,23 @@ public:
         bs_pub = _nh.advertise<rrtstar_ros::rrt_array>("/bs", 10);
         rrt_pub = _nh.advertise<rrtstar_ros::rrt_array>("/rrt", 10);
         start_end_pub = _nh.advertise<rrtstar_ros::start_end_markers>("/start_end_markers", 10);
-        altered_pcl_pub = _nh.advertise<sensor_msgs::PointCloud2>("/new_pcl", 10);
+        altered_pcl_pub = _nh.advertise<sensor_msgs::PointCloud2>("/query_pcl", 10);
+        transformed_pcl_pub = _nh.advertise<sensor_msgs::PointCloud2>("/transformed_pcl", 10);
+        origin_pub = _nh.advertise<geometry_msgs::Point>("/origin", 10);
 
         pcl_sub = _nh.subscribe("/pcl", 1, &initiator::pcl2_callback, this);
         // pcl_sub = _nh.subscribe("/pcl", 1, initiator::pcl2_callback);
         printf("%s[main.cpp] Constructor Setup Ready! \n", KGRN);
     }
     ~initiator(){};
+
+    void origin_publisher() 
+    {
+        origin.x = 0; 
+        origin.y = 0; 
+        origin.z = 0; 
+        origin_pub.publish(origin);
+    }
 
     void set_rrt_array(std::vector<Vector3d> _rrt_list)
     {
@@ -145,13 +160,12 @@ public:
 
     void new_pcl_publisher()
     {
-        // ROS point cloud
-        sensor_msgs::PointCloud2 msg;
+        altered_pcl_pub.publish(pc_original_frame);
+    }
 
-        // PCL first generation point cloud-> ROS point cloud
-        pcl::toROSMsg(*pc, msg);
-
-        altered_pcl_pub.publish(msg);
+    void transformed_pcl_publisher()
+    {
+        transformed_pcl_pub.publish(pcl_pc2_transformed);
     }
 
     void points_message_wrapper_publisher(
@@ -204,6 +218,10 @@ int main(int argc, char **argv)
     double _start_delay;
     double _min_height, _max_height;
     double _bs_order;
+    double _passage_size;
+
+    double tmp_yaw_deg;
+    Vector3d translation;
 
     _nh.param<std::string>("file_location", _file_location, "/home");
     _nh.param<double>("step_size", _step_size, 1.0);
@@ -212,6 +230,7 @@ int main(int argc, char **argv)
     _nh.param<int>("line_search_division", _line_search_division, 1);
     _nh.param<double>("xybuffer", _xybuffer, 1.0);
     _nh.param<double>("zbuffer", _zbuffer, 1.0);
+    _nh.param<double>("passage_size", _passage_size, 1.0);
     _nh.param<double>("start_delay", _start_delay, 1.0);
 
     _nh.param<double>("min_height", _min_height, 1.0);
@@ -222,8 +241,8 @@ int main(int argc, char **argv)
     // Sleep for 3 second to let mockamap initialise the map
     ros::Duration(_start_delay).sleep();
 
-    std::vector<Vector3d> start;
-    std::vector<Vector3d> end; 
+    std::vector<Vector3d> start, nstart;
+    std::vector<Vector3d> end, nend; 
     
     ros::spinOnce();
 
@@ -276,20 +295,69 @@ int main(int argc, char **argv)
             KBLU, start[i].x(), start[i].y(), start[i].z(),
             end[i].x(), end[i].y(), end[i].z());
 
+        _origin = _common_utils.findCentroid(start[i], end[i]);
+        
+        // Find the tilt angle
+        Vector3d tmp_vect = end[i] - start[i];
+        tmp_yaw_deg = atan2(tmp_vect.y(), tmp_vect.x()) / 3.1415926535 * 180;
+        printf("%s[main.cpp] Vector Yaw %lf \n", KBLU, tmp_yaw_deg);
+
+        translation = Vector3d(_origin.x(), _origin.y(), 0);
+        printf("%s[main.cpp] translation vector %lf %lf %lf \n", KBLU, translation.x(), translation.y(), translation.z());
+
+        // We align everthing to the rotated x axis
+
+        // Translate then rotate to temporary frame for start and end points
+        geometry_msgs::Point start_tmp = _common_utils.transform_point(_common_utils.vector_to_point(start[i]),
+            - Vector3d(0, 0, 0), - translation);
+        start_tmp = _common_utils.transform_point(start_tmp,
+            - Vector3d(0, 0, tmp_yaw_deg), Vector3d(0, 0, 0));
+        nstart.push_back(_common_utils.point_to_vector(start_tmp));
+
+        geometry_msgs::Point end_tmp = _common_utils.transform_point(_common_utils.vector_to_point(end[i]),
+            - Vector3d(0, 0, 0), - translation);
+        end_tmp = _common_utils.transform_point(end_tmp,
+            - Vector3d(0, 0, tmp_yaw_deg), Vector3d(0, 0, 0));
+        nend.push_back(_common_utils.point_to_vector(end_tmp));
+
+        printf("%s[main.cpp] transformed start (%lf %lf %lf) end (%lf %lf %lf) \n", 
+            KBLU, nstart[i].x(), nstart[i].y(), nstart[i].z(),
+            nend[i].x(), nend[i].y(), nend[i].z());
+
+        // Translate then rotate to temporary frame for point clouds
+        sensor_msgs::PointCloud2 tmp_transformed_pc = _common_utils.transform_sensor_cloud(initiator.pcl_pc2,
+            - Vector3d(0, 0, 0), - translation);
+        tmp_transformed_pc = _common_utils.transform_sensor_cloud(tmp_transformed_pc,
+            - Vector3d(0, 0, tmp_yaw_deg), Vector3d(0, 0, 0));
+        
+        initiator.pcl_pc2_transformed = tmp_transformed_pc;
+        printf("%s[main.cpp] Transformed full pcl \n", KBLU);
+        initiator.transformed_pcl_publisher();
+
         // Map size and origin should be determined and isolated 
         // Find a way to rotate the boundary so that we can minimize the space
-        _map_size = _common_utils.findBoundary(start[i], end[i], _xybuffer, _zbuffer);
-        _origin = _common_utils.findCentroid(start[i], end[i]);
+        // _map_size = _common_utils.findBoundary(start[i], end[i], _passage_size, _xybuffer, _zbuffer);
+        _map_size = _common_utils.findBoundary(nstart[i], nend[i], _passage_size, _xybuffer, _zbuffer);
 
         double crop_timer = ros::Time::now().toSec();
         // We can crop the pointcloud to the dimensions that we are using
-        initiator.pc = _common_utils.pcl2_filter(initiator.pcl_pc2, _origin, _map_size);
+        // Origin will already to (0,0,0)
+        // initiator.pc = _common_utils.pcl2_filter(initiator.pcl_pc2, Vector3d(0,0,0), _map_size);
+        initiator.pc = _common_utils.pcl2_filter(initiator.pcl_pc2_transformed, Vector3d(0,0,_origin.z()), _map_size);
+
+        // Translate then rotate from temporary frame for point clouds back to original frame
+        sensor_msgs::PointCloud2 tmp_store_pc;
+        pcl::toROSMsg(*initiator.pc, tmp_store_pc);
+        sensor_msgs::PointCloud2 tmp_pc = _common_utils.transform_sensor_cloud(tmp_store_pc,
+            - Vector3d(0, 0, - tmp_yaw_deg), Vector3d(0, 0, 0));
+        tmp_pc = _common_utils.transform_sensor_cloud(tmp_pc,
+            - Vector3d(0, 0, 0), translation);
+        initiator.pc_original_frame = tmp_pc;
+
         initiator.actual_pc = _common_utils.pcl2_converter(initiator.pcl_pc2);
         printf("%s[main.cpp] Time taken to crop obstacle %lf! \n", KGRN, ros::Time::now().toSec() - crop_timer);
     }
-    // We can advertise the start and end as markers
-    initiator.points_message_wrapper_publisher(start, end);
-    initiator.new_pcl_publisher();
+
 
     for (int i = 0; i < total; i++) 
     {
@@ -297,8 +365,15 @@ int main(int argc, char **argv)
         int total = static_cast<int>(num_points);
         printf("%s[main.cpp] Round %d! \n", KBLU, i);
         printf("%s[main.cpp] Actual obstacle size %d! \n", KGRN, total);
-        rrt.initialize(start[i], end[i], initiator.pc,
-            _map_size, _origin,
+        
+        // rrt.initialize(start[i], end[i], initiator.pc,
+        //     _map_size, _origin,
+        //     _step_size, _obs_threshold,
+        //     _min_height, _max_height,
+        //     _line_search_division);
+        
+        rrt.initialize(nstart[i], nend[i], initiator.pc,
+            _map_size, Vector3d(0,0,_origin.z()),
             _step_size, _obs_threshold,
             _min_height, _max_height,
             _line_search_division);
@@ -311,13 +386,41 @@ int main(int argc, char **argv)
             return 0;
         }
 
-        // Extract path
-        std::vector<Vector3d> path = rrt.path_extraction();
+        // // Extract path in transformed frame
+        // std::vector<Vector3d> transformed_path = rrt.path_extraction();
+        // std::vector<Vector3d> path = transformed_path;
+        // initiator.set_rrt_array(path);
+        // initiator.path_message_wrapper_publisher(nstart[i]);
+        // initiator.bspline_message_wrapper_publisher(_bs_order, nend[i]);
+        // // We can advertise the start and end as markers
+        // initiator.points_message_wrapper_publisher(nstart, nend);
+        // initiator.new_pcl_publisher();
 
+
+        // Extract path in normal frame
+        std::vector<Vector3d> transformed_path = rrt.path_extraction();
+        std::vector<Vector3d> path;
+        for (int i = 0; i < transformed_path.size(); i++)
+        {
+            Vector3d tmp_path = transformed_path[i];
+
+            geometry_msgs::Point n_tmp_path = _common_utils.transform_point(_common_utils.vector_to_point(tmp_path),
+                - Vector3d(0, 0, - tmp_yaw_deg), Vector3d(0, 0, 0));
+            n_tmp_path = _common_utils.transform_point(n_tmp_path,
+                - Vector3d(0, 0, 0), translation);
+
+            path.push_back(_common_utils.point_to_vector(n_tmp_path));
+        }
         initiator.set_rrt_array(path);
-
         initiator.path_message_wrapper_publisher(start[i]);
         initiator.bspline_message_wrapper_publisher(_bs_order, end[i]);
+        // We can advertise the start and end as markers
+        initiator.points_message_wrapper_publisher(start, end);
+        initiator.new_pcl_publisher();
+
+
+        initiator.transformed_pcl_publisher();
+        initiator.origin_publisher();
 
         ros::spin();
         //ros::Duration(20.0).sleep();

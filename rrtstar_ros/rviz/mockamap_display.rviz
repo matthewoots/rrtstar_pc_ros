@@ -26,7 +26,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: mockamap
+    SyncSource: transformed_full_pcl
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -67,9 +67,7 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 4096
       Min Color: 0; 0; 0
-      Min Intensity: 0
       Name: mockamap
       Position Transformer: XYZ
       Queue Size: 10
@@ -109,8 +107,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 7.5
-        Min Value: 1.5
+        Max Value: 7
+        Min Value: 2
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -121,21 +119,47 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 4096
       Min Color: 0; 0; 0
-      Min Intensity: 0
-      Name: Altered_PCL
+      Name: query_pcl
       Position Transformer: XYZ
       Queue Size: 10
       Selectable: true
       Size (Pixels): 3
       Size (m): 0.20000000298023224
       Style: Squares
-      Topic: /new_pcl
+      Topic: /query_pcl
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/PointCloud2
+      Color: 245; 121; 0
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: false
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Min Color: 0; 0; 0
+      Name: transformed_full_pcl
+      Position Transformer: XYZ
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.05000000074505806
+      Style: Flat Squares
+      Topic: /transformed_pcl
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: false
   Enabled: true
   Global Options:
     Background Color: 255; 255; 255
@@ -164,25 +188,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 43.619407653808594
+      Distance: 51.6319580078125
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.29256975650787354
-        Y: -0.4349587559700012
-        Z: 0.331025630235672
+        X: 0.46365106105804443
+        Y: 0.5397035479545593
+        Z: -1.4089360237121582
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.6103981733322144
+      Pitch: 0.5553976893424988
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 0.7803184390068054
+      Yaw: 0.26532045006752014
     Saved: ~
 Window Geometry:
   Displays:
