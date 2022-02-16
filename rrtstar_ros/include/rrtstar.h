@@ -73,17 +73,19 @@ class rrtstar
         Vector3d position;
     };
 
-    constexpr static int max_nodes = 300;
+    constexpr static int max_nodes = 500;
     Node start_node;
     Node end_node;
     Node* nodes[max_nodes]; // ?? need to clean this up
     pcl::PointCloud<pcl::PointXYZ>::Ptr obs;
 
-    bool reached, error;
+    bool reached;
     double obs_threshold;
     int step_size, iter, total_nodes;
     int line_search_division;
     double _min_height, _max_height;
+
+    double timeout = 0.1;
 
     Vector3d map_size = Vector3d::Zero();
     Vector3d origin = Vector3d::Zero();    
@@ -148,7 +150,7 @@ class rrtstar
                 // }
             // }
             if((check_validity(step_node->position, end_node.position)) && 
-                (separation(step_node->position,end_node.position) < step_size))
+                (separation(step_node->position,end_node.position) < step_size/1.5))
             {
                 printf("%sReached path!\n", KGRN);
                 reached = true;
@@ -254,6 +256,7 @@ class rrtstar
         {
             Vector3d tmp;
             pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_obs;
+            pcl::PointCloud<pcl::PointXYZ>::Ptr local_obs = obs;
 
             tmp.x() = line_vector.col(i).x();
             tmp.y() = line_vector.col(i).y();
@@ -264,11 +267,18 @@ class rrtstar
             
 
             // ------ Optimization on PCL ------
-            tmp_obs = _common_utils.pcl2_filter_ptr(obs, tmp, 
+            tmp_obs = _common_utils.pcl2_filter_ptr(local_obs, tmp, 
                 Vector3d(2*step_size, 2*step_size, 2*step_size));
             size_t num_points = tmp_obs->size();
             int total = static_cast<int>(num_points);
-            if (num_points == 0)
+            // printf("%s[rrtstar.h] tmp_obs size %d! \n", KGRN, total);
+
+            size_t t_num_points = obs->size();
+            int t_total = static_cast<int>(t_num_points);
+            // printf("%s[rrtstar.h] obs size %d! \n", KGRN, t_total);
+            
+            
+            if (total == 0)
                 continue;
 
             if (kdtree_pcl(line_vector.col(i), tmp_obs, obs_threshold))
@@ -309,7 +319,23 @@ class rrtstar
         return true;    
     }
 
+
+
     public:
+
+    bool error;
+    // constructor
+    rrtstar()
+    {
+        cout<<"Constructor called"<<endl;
+    }
+ 
+    // destructor
+    ~rrtstar()
+    {
+        cout<<"Destructor called"<<endl;
+    }
+
 
     // Used for pcl2 and adapted from 
     // https://pcl.readthedocs.io/projects/tutorials/en/latest/kdtree_search.html
@@ -361,20 +387,25 @@ class rrtstar
         //             << " " << searchPoint.z
         //             << ") with radius=" << radius << std::endl;
 
+        size_t t_num_points = _obs->size();
+        int t_total = static_cast<int>(t_num_points);
+        printf("%s[rrtstar.h] obs size %d! \n", KGRN, t_total);
 
         if ( kdtree.radiusSearch (searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance) > 0 )
         {
-            for (std::size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
-            {
-                // std::cout << "    "  <<   (*_obs)[ pointIdxRadiusSearch[i] ].x 
-                //             << " " << (*_obs)[ pointIdxRadiusSearch[i] ].y 
-                //             << " " << (*_obs)[ pointIdxRadiusSearch[i] ].z 
-                //             << " (squared distance: " << pointRadiusSquaredDistance[i] << ")" << std::endl;
-                return true;
-            }
+            // for (std::size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
+            // {
+            //     // std::cout << "    "  <<   (*_obs)[ pointIdxRadiusSearch[i] ].x 
+            //     //             << " " << (*_obs)[ pointIdxRadiusSearch[i] ].y 
+            //     //             << " " << (*_obs)[ pointIdxRadiusSearch[i] ].z 
+            //     //             << " (squared distance: " << pointRadiusSquaredDistance[i] << ")" << std::endl;
+            //     return true;
+            // }
         }
-
-        return false;
+        if ((int)pointIdxRadiusSearch.size() > 0)
+            return true;
+        else
+            return false;
     }
 
     bool kdtree_pcl(Vector3d point, pcl::PointCloud<pcl::PointXYZ>::Ptr _obs,
@@ -466,6 +497,15 @@ class rrtstar
         start_node.position = _start;
         start_node.parent = NULL;
         total_nodes = 0;
+        reached = false;
+
+        // Reset and clear the nodes
+        for (int i = 0; i < max_nodes; i++)
+        {
+            Node* random_node = new Node;
+            nodes[i] = random_node;
+            nodes[i]->children.clear();
+        }
 
         error = false;
 
@@ -487,7 +527,7 @@ class rrtstar
         iter = 0;
         line_search_division = _line_search_division;
         printf("%s[rrtstar.h] Initialized! \n", KBLU);
-        srand(time(NULL));
+        // srand(time(NULL));
     }
 
     void run()
@@ -502,7 +542,7 @@ class rrtstar
         while(!reached)
         {
             rrt();
-            if (total_nodes > max_nodes || ros::Time::now().toSec() - fail_timer > 10.0)
+            if (total_nodes > max_nodes || ros::Time::now().toSec() - fail_timer > timeout)
             {
                 printf("%s[rrtstar.h] Failed run process! \n", KRED);
                 printf("%s[rrtstar.h] Exceeded max nodes or runtime too long! \n", KRED);

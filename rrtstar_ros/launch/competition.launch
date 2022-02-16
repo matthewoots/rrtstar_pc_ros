@@ -2,7 +2,7 @@
 
 
 <node pkg="mockamap" type="mockamap_node" name="mockamap_node" output="screen">
-  <rosparam command="load" file="$(find rrtstar_ros)/config/mockamap.yaml" />
+  <rosparam command="load" file="$(find rrtstar_ros)/competition/mockamap_competition.yaml" />
   <!-- <param name="type" type="int" value="1"/> -->
     <!-- 1 perlin noise parameters -->
     <!-- complexity:    base noise frequency,
@@ -16,18 +16,11 @@
 
 </node>
 
-<!-- Launch RViz with the demo configuration -->
-<node name="rviz" pkg="rviz" type="rviz"
-  args="-d $(find rrtstar_ros)/rviz/mockamap_display.rviz"
-  />
-
 <node pkg="rrtstar_ros" type="rrtstar_ros_test_node" name="rrtstar_ros_node" output="screen">
-  <param name="file_location" type="string" value="$(find rrtstar_ros)/config/point.csv"/>
-  <rosparam command="load" file="$(find rrtstar_ros)/config/rrt.yaml" />
+  <param name="file_location" type="string" value="$(find rrtstar_ros)/competition/point_competition.csv"/>
+  <rosparam command="load" file="$(find rrtstar_ros)/competition/rrt_competition.yaml" />
   <remap from="/pcl" to="/mock_map"/>
 </node>
-
-<node pkg="rrtstar_ros" type="rrtstar_ros_visualization_node" name="rrtstar_ros_visualization" output="screen">
 
 </node>
 

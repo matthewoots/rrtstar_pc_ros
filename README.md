@@ -3,24 +3,56 @@ Development of RRT* on ROS using `sensor_msgs::PointCloud2` received from `mocka
 
 Using custom generalized `Bspline` used in https://github.com/matthewoots/px4-path-planner to generate a b-spline path within the RRT
 
+Will be integrated into https://github.com/matthewoots/px4-path-planner for global swarm planning operation with PX4
+
 ```cpp
-// Solution found! with 330 iter and 29 nodes
-// Total Time Taken = 1.579208!
+// Actual obstacle size 57312! 
+// After Crop : Obstacle size 14041! 
+
+// RRT Segment
+// Solution found! with 96 iter and 13 nodes
+// Total Time Taken = 0.072487!
+// RRT node size = 10
+
+// Bounding Box Search 
+// With 33 points of query 
+// [lbfgs_pcl_constrain.h] Total time 0.347703
+
+// Will be much faster with lower density pointcloud, this is considering internal fill of the mockamap
 ```
-![](output.png)
+|Without Bounding Box|With Bounding Box|
+|---|---|
+|![](output.png)|![](output2.png)|
+
 
 ### Current Params for RRT
 These are the current parameters for tuning the RRT, sometimes the search does not give a good result if the **boundaries are too small** and the **threshold is too large**.
 The current working parameters are as shown below
-```cpp
-string _file_location;
-double _step_size = 3.0; //Size for adding the next node
-double _obs_threshold = 1.7; //Threshold to void the use for the node
-double _random_multiplier = 1.0; //When initiating the start and end point, the points may lie on a pointcloud
-int _line_search_division = 3; //Splitting the line search to these number of divisions
-double _xybuffer = 3.0; //Size for xy buffer
-double _zbuffer = 5.0; //Size for z buffer
-double _start_delay = 1.0; //Delay before starting
+```yaml
+string _file_location change in launch
+The rest of the parameters change in yaml
+# RRT Parameters
+start_delay: 3.0 # Represents the time for mockamap to startup
+step_size: 1.5 # Represents node step size when doing RRT
+obs_threshold: 0.9 # Acceptable distance from the threshold
+random_multiplier: 1.0 # Random multiplier to push start and end points out of obstacles
+line_search_division: 4 # Split the line search portion for any collision
+
+xybuffer: 4.0 # XY buffer for cropping of pointcloud
+zbuffer: 4.0 # Z buffer for cropping of pointcloud 
+passage_size: 4.5 # In this case it is a Y buffer, since its suppose to be align to X
+
+min_height: 1.0 # Minimum height (will clamp)
+max_height: 5.0 # Maximum height (will clamp)
+
+## Bspline Parameters
+bs_order: 6
+
+## Box Constrain Parameters
+max_boundaries: 0.7 # Bounding box maximum constrain
+corridor_size: 0.6 # This affect cropping about the Y
+division: 4 # Same as the line search for collision
+safety_radius: 0.5 # Safety radius of the agent
 ```
 
 ### Simple Setup
@@ -34,8 +66,11 @@ catkin build -j1 #or else ros_message will not be build properly
 ```
 ### Launch
 ```
-# To show everything even the map and the algorithm and the path
+# To show everything even the map and the algorithm and the path with bounding box
 rrt_rviz.launch
+
+# To show visualization in the competition field with bounding box
+competition_rviz.launch
 
 # To show mockamap in rviz only
 mockamap_rviz.launch

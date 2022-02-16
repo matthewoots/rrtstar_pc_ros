@@ -41,24 +41,20 @@
 
 #include <geometry_msgs/Point.h>
 
-#include "rrtstar_ros/rrt_array.h"
-#include "rrtstar_ros/rrt_data.h"
+#include "rrtstar_ros/point_array.h"
 #include "rrtstar_ros/start_end_markers.h"
+#include "rrtstar_ros/bounding_box.h"
+#include "rrtstar_ros/bounding_box_array.h"
 
 using namespace std;
 using namespace Eigen;
 
-ros::Publisher rrt_marker_pub;
-ros::Publisher start_end_marker_pub;
-ros::Publisher bs_marker_pub;
+ros::Publisher rrt_marker_pub, start_end_marker_pub, bs_marker_pub, constrains_marker_pub;
+ros::Subscriber bs_message, rrt_message, start_end_message, bounding_box_message;
 
-ros::Subscriber bs_message;
-ros::Subscriber rrt_message;
-ros::Subscriber start_end_message;
-
-void rrt_callback(const rrtstar_ros::rrt_array::ConstPtr &msg)
+void rrt_callback(const rrtstar_ros::point_array::ConstPtr &msg)
 {
-  rrtstar_ros::rrt_array rrt = *msg;
+  rrtstar_ros::point_array rrt = *msg;
 
   visualization_msgs::Marker rrt_points, line_strip;
   rrt_points.header.frame_id = line_strip.header.frame_id = "/map";
@@ -108,9 +104,59 @@ void rrt_callback(const rrtstar_ros::rrt_array::ConstPtr &msg)
   rrt_marker_pub.publish(line_strip);
 }
 
-void bs_callback(const rrtstar_ros::rrt_array::ConstPtr &msg)
+void constrain_callback(const rrtstar_ros::bounding_box_array::ConstPtr &msg)
 {
-  rrtstar_ros::rrt_array rrt = *msg;
+  rrtstar_ros::bounding_box_array bb_array = *msg;
+
+  visualization_msgs::Marker bb_points;
+  bb_points.header.frame_id = "/map";
+  bb_points.header.stamp = ros::Time::now();
+  bb_points.ns = "constrain_visualization_points";
+  bb_points.action = visualization_msgs::Marker::ADD;
+
+  bb_points.type = visualization_msgs::Marker::CUBE;
+
+  int bb_size = bb_array.array.size();
+  // Create the vertices for the points and lines
+  for (int i = 0; i < bb_size; i++)
+  {
+    bb_points.id = i;
+
+    bb_points.color.r = 1.0f;
+    bb_points.color.g = 0.0f;
+    bb_points.color.b = 0.0f;
+    bb_points.color.a = 0.5f;
+
+    Vector3d box_difference;
+    box_difference.x() = bb_array.array[i].max.x - bb_array.array[i].min.x;
+    box_difference.y() = bb_array.array[i].max.y - bb_array.array[i].min.y;
+    box_difference.z() = bb_array.array[i].max.z - bb_array.array[i].min.z;
+
+    Vector3d box_center = box_difference/2;
+
+    printf("%s[rrtstar_visualization.cpp] [%lf %lf %lf] Box Seperation [%lf %lf %lf] \n", 
+      KYEL, bb_array.array[i].center.x, bb_array.array[i].center.y, 
+      bb_array.array[i].center.z, box_difference.x(), box_difference.y(), box_difference.z());
+
+    bb_points.pose.position.x = bb_array.array[i].center.x;
+    bb_points.pose.position.y = bb_array.array[i].center.y;
+    bb_points.pose.position.z = bb_array.array[i].center.z;
+    
+    bb_points.pose.orientation = bb_array.array[i].orientation;
+
+    // CUBE markers use x and y scale for width/height respectively
+    bb_points.scale.x = abs(box_difference.x());
+    bb_points.scale.y = abs(box_difference.y());
+    bb_points.scale.z = abs(box_difference.z());
+
+    constrains_marker_pub.publish(bb_points);
+  }
+
+}
+
+void bs_callback(const rrtstar_ros::point_array::ConstPtr &msg)
+{
+  rrtstar_ros::point_array rrt = *msg;
 
   visualization_msgs::Marker cp_points, line_strip;
   cp_points.header.frame_id = line_strip.header.frame_id = "/map";
@@ -228,10 +274,15 @@ int main( int argc, char** argv )
         "/rrt_visualization_marker", 10);
   start_end_marker_pub = n.advertise<visualization_msgs::Marker>(
         "/start_end_visualization_marker", 10);
-  bs_message = n.subscribe<rrtstar_ros::rrt_array>(
+  constrains_marker_pub = n.advertise<visualization_msgs::Marker>(
+        "/constrains_visualization_marker", 10);
+
+  bs_message = n.subscribe<rrtstar_ros::point_array>(
         "/bs", 10, &bs_callback);      
-  rrt_message = n.subscribe<rrtstar_ros::rrt_array>(
+  rrt_message = n.subscribe<rrtstar_ros::point_array>(
         "/rrt", 10, &rrt_callback);
+  bounding_box_message = n.subscribe<rrtstar_ros::bounding_box_array>(
+        "/bb", 10, &constrain_callback);
   start_end_message = n.subscribe<rrtstar_ros::start_end_markers>(
         "/start_end_markers", 10, &start_end_callback);
 

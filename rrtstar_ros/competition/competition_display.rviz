@@ -6,6 +6,7 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /constrain_marker1
       Splitter Ratio: 0.46109509468078613
     Tree Height: 549
   - Class: rviz/Selection
@@ -107,8 +108,8 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 7
-        Min Value: 2.450000047683716
+        Max Value: 4.949999809265137
+        Min Value: 1.0499999523162842
         Value: true
       Axis: Z
       Channel Name: intensity
@@ -166,7 +167,7 @@ Visualization Manager:
       Name: constrain_marker
       Namespaces:
         constrain_visualization_points: true
-      Queue Size: 100
+      Queue Size: 30
       Value: true
   Enabled: true
   Global Options:
@@ -196,25 +197,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 53.646183013916016
+      Distance: 28.234210968017578
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 1.1720154285430908
-        Y: -0.05231797322630882
-        Z: -0.5915439128875732
+        X: 2.4008233547210693
+        Y: -0.8763583302497864
+        Z: 0.22703945636749268
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.9947958588600159
+      Pitch: 0.6097961068153381
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.481682538986206
+      Yaw: 3.0966832637786865
     Saved: ~
 Window Geometry:
   Displays:

@@ -63,11 +63,10 @@
 using namespace Eigen;
 using namespace std;
 
-bs::bspline _bsp;
-
 class common_utility
 {
 public:
+    bs::bspline _bsp;
 
     /* 
     * @brief Convert csv start and end waypoints to Vector3d form
@@ -97,7 +96,7 @@ public:
         }
 
         *_start = start; *_end = end; 
-        printf("%s[common_utils.h] Completed %s \n", KGRN, KNRM);
+        printf("%s[common_utils.h] Completed %s size %d\n", KGRN, KNRM, start.size());
         return true;
     }
 
@@ -122,7 +121,7 @@ public:
     }
 
     /* 
-    * @brief Filter point cloud with the dimensions given
+    * @brief Filter point cloud (ros) with the dimensions given
     */
     pcl::PointCloud<pcl::PointXYZ>::Ptr 
         pcl2_filter(sensor_msgs::PointCloud2 _pc, 
@@ -152,6 +151,35 @@ public:
         box_filter.setMax(Eigen::Vector4f(maxX, maxY, maxZ, 1.0));
 
         box_filter.setInputCloud(tmp_cloud);
+        box_filter.filter(*output);
+
+        // printf("%s[rrtstar.h] return fromPCLPointCloud2! \n", KBLU);
+        return output;
+    }
+
+    /* 
+    * @brief Filter point cloud (pcl ptr) with the dimensions given
+    */
+    pcl::PointCloud<pcl::PointXYZ>::Ptr 
+        pcl_filter(pcl::PointCloud<pcl::PointXYZ>::Ptr _pc, 
+        Vector3d centroid, Vector3d dimension)
+    {
+        pcl::PointCloud<pcl::PointXYZ>::Ptr output(new pcl::PointCloud<pcl::PointXYZ>);
+        
+        float minX = centroid.x() - dimension.x()/2;
+        float maxX = centroid.x() + dimension.x()/2;
+
+        float minY = centroid.y() - dimension.y()/2;
+        float maxY = centroid.y() + dimension.y()/2;
+
+        float minZ = centroid.z() - dimension.z()/2;
+        float maxZ = centroid.z() + dimension.z()/2;
+
+        pcl::CropBox<pcl::PointXYZ> box_filter;
+        box_filter.setMin(Eigen::Vector4f(minX, minY, minZ, 1.0));
+        box_filter.setMax(Eigen::Vector4f(maxX, maxY, maxZ, 1.0));
+
+        box_filter.setInputCloud(_pc);
         box_filter.filter(*output);
 
         // printf("%s[rrtstar.h] return fromPCLPointCloud2! \n", KBLU);
@@ -189,6 +217,52 @@ public:
         return transformed_cloud;
     }
 
+    pcl::PointCloud<pcl::PointXYZ>::Ptr base_to_transform_pcl(pcl::PointCloud<pcl::PointXYZ>::Ptr _pc, Vector3d rotation, Vector3d translation)
+    {
+        // https://github.com/felipepolido/EigenExamples
+        // for affine3d examples
+        geometry_msgs::Quaternion q;
+        tf2::Quaternion quat_tf;
+        double deg2rad = - 1.0 / 180.0 * 3.1415926535;
+
+        quat_tf.setRPY(rotation.x() * deg2rad, 
+            rotation.y() * deg2rad, 
+            rotation.z() * deg2rad); // Create this quaternion from roll/pitch/yaw (in radians)
+        q = tf2::toMsg(quat_tf);
+        
+        // w,x,y,z
+        Eigen::Quaterniond rot(q.w, q.x, q.y, q.z);
+        rot.normalize();
+
+        Eigen::Quaterniond p;
+        p.w() = 0;
+        p.vec() = - translation;
+        Eigen::Quaterniond rotatedP = rot * p * rot.inverse(); 
+        Eigen::Vector3d rotatedV = rotatedP.vec();
+
+        Eigen::Affine3d aff_t = Eigen::Affine3d::Identity();
+        Eigen::Affine3d aff_r = Eigen::Affine3d::Identity();
+        // aff_t.translation() = - translation;
+        aff_r.translation() = rotatedV;
+        aff_r.linear() = rot.toRotationMatrix();
+        // pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pcl_trans(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_pcl_rot(new pcl::PointCloud<pcl::PointXYZ>);
+        // transformPointCloud(*_pc, *tmp_pcl_trans, aff_t, true);
+        transformPointCloud(*_pc, *tmp_pcl_rot, aff_r, true);
+
+        return tmp_pcl_rot;
+
+        // *** Remove multiple conversions that will take up more time ***
+        // *** Replace with solely Eigen calculation ***
+        // sensor_msgs::PointCloud2 ros_pc;
+        // pcl::toROSMsg(*_pc, ros_pc);
+        // // Translate then rotate to temporary frame for point clouds
+        // sensor_msgs::PointCloud2 tmp_transformed_pc = transform_sensor_cloud(ros_pc, - Vector3d(0, 0, 0), - translation);
+        // tmp_transformed_pc = transform_sensor_cloud(tmp_transformed_pc, - rotation, Vector3d(0, 0, 0));
+    
+        // return pcl2_converter(tmp_transformed_pc);
+    }
+
     geometry_msgs::Point vector_to_point(Vector3d v)
     {
         geometry_msgs::Point tmp;
@@ -209,8 +283,22 @@ public:
         return tmp;
     }
 
+    geometry_msgs::Quaternion rpy_to_quaternion(Vector3d _rpy)
+    {
+        geometry_msgs::Quaternion q;
+        tf2::Quaternion quat_tf;
+
+        double deg2rad = 1.0 / 180.0 * 3.1415926535;
+
+        quat_tf.setRPY(_rpy.x() * deg2rad, 
+            _rpy.y() * deg2rad, 
+            _rpy.z() * deg2rad); // Create this quaternion from roll/pitch/yaw (in radians)
+        q = tf2::toMsg(quat_tf);
+        return q;
+    }
+
     /* 
-    * @brief Transform pose cloud according to the translation and rpy given
+    * @brief Transform pose according to the translation and rpy given
     */
     geometry_msgs::Point transform_point(geometry_msgs::Point _p,
         Vector3d _rpy, Vector3d _translation)
@@ -238,6 +326,32 @@ public:
         tf2::doTransform(_p, point, transform);
 
         return point;
+    }
+
+    /* 
+    * @brief Forward transform pose according to the translation and rpy given
+    */
+    geometry_msgs::Point forward_transform_point(geometry_msgs::Point _p,
+        Vector3d _rpy, Vector3d _translation)
+    {
+        geometry_msgs::Point tmp = transform_point(_p,
+            - Vector3d(0, 0, 0), - _translation);
+        tmp = transform_point(tmp,
+            - Vector3d(0, 0, _rpy.z()), Vector3d(0, 0, 0));
+        return tmp;
+    }
+
+    /* 
+    * @brief Backward transform pose according to the translation and rpy given
+    */
+    geometry_msgs::Point backward_transform_point(geometry_msgs::Point _p,
+        Vector3d _rpy, Vector3d _translation)
+    {
+        geometry_msgs::Point tmp = transform_point(_p,
+            - Vector3d(0, 0, - _rpy.z()), Vector3d(0, 0, 0));
+        tmp = transform_point(tmp, - Vector3d(0, 0, 0), _translation);
+
+        return tmp;
     }
 
     /* 

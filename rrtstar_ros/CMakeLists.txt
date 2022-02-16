@@ -22,8 +22,9 @@ find_package(catkin
 # Generate messages in the 'msg' folder
 add_message_files(
   FILES
-  rrt_array.msg
-  rrt_data.msg
+  point_array.msg
+  bounding_box.msg
+  bounding_box_array.msg
   start_end_markers.msg
 )
 
@@ -79,11 +80,14 @@ include_directories(
 ## either from message generation or dynamic reconfigure
 # add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-add_executable(${PROJECT_NAME}_node 
-src/main.cpp
-)
+# add_executable(${PROJECT_NAME}_node 
+# src/main.cpp
+# )
 
 ## All these are for testing purposes so we can leave them here
+add_executable(${PROJECT_NAME}_test_node 
+src/main.cpp
+)
 add_executable(${PROJECT_NAME}_visualization_node 
 src/visualization/rrtstar_visualization.cpp
 )
@@ -99,11 +103,14 @@ src/visualization/rrtstar_visualization.cpp
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(${PROJECT_NAME}_node
-  ${catkin_LIBRARIES}
-)
+# target_link_libraries(${PROJECT_NAME}_node
+#   ${catkin_LIBRARIES}
+# )
 
 ## All these are for testing purposes so we can leave them here
+target_link_libraries(${PROJECT_NAME}_test_node
+  ${catkin_LIBRARIES}
+)
 target_link_libraries(${PROJECT_NAME}_visualization_node 
   ${catkin_LIBRARIES}
 )

@@ -1,0 +1,29 @@
+# Mockamap Parameters
+update_freq: 0.5
+
+## box edge length, unit meter
+resolution: 0.15
+
+## Perlin Noise
+# type: 1
+# # 5112, 5114, 5115 provides tough obstacles
+# seed: 5108
+# complexity: 0.03
+# fill: 0.085
+# fractal: 0.8
+# attenuation: 0.5
+# ## map size unit meter
+# x_length: 40
+# y_length: 40
+# z_length: 15
+
+## Pillars
+type: 2
+seed: 1152
+width_min: 0.3
+width_max: 0.3
+obstacle_number: 25
+# map size unit meter
+x_length: 11.5
+y_length: 7.5
+z_length: 30

@@ -2,13 +2,14 @@
 update_freq: 0.5
 
 ## box edge length, unit meter
-resolution: 0.25
+resolution: 0.35
 
 ## Perlin Noise
 type: 1
-seed: 5112
-complexity: 0.03
-fill: 0.074
+# 5112, 5114, 5115 provides tough obstacles
+seed: 5115
+complexity: 0.024
+fill: 0.105
 fractal: 1
 attenuation: 0.3
 ## map size unit meter
