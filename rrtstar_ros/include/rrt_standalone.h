@@ -1,5 +1,5 @@
 /*
- * rrtstar.h
+ * rrt_standalone.h
  *
  * ---------------------------------------------------------------------
  * Copyright (C) 2022 Matthew (matthewoots at gmail.com)
@@ -27,7 +27,7 @@
 * https://github.com/swadhagupta/RRT/blob/master/rrt.cpp
 * https://pcl.readthedocs.io/projects/tutorials/en/latest/kdtree_search.html
 */
-#include "common_utils.h"
+#include <rrt_helper.h>
 
 #include <iostream>
 #include <string>
@@ -45,9 +45,13 @@
 #include <pcl/conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/filters/crop_box.h>
+
+#include <geometry_msgs/Point.h>
 
 using namespace Eigen;
 using namespace std;
+using namespace rrt_helper;
 
 #define dmax std::numeric_limits<double>::max();
 
@@ -60,9 +64,7 @@ using namespace std;
 #define KCYN  "\033[36m"
 #define KWHT  "\033[37m"
 
-common_utility _common_utils;
-
-class rrtstar
+class rrt_node
 {
     private:
 
@@ -88,7 +90,11 @@ class rrtstar
     double timeout = 0.1;
 
     Vector3d map_size = Vector3d::Zero();
-    Vector3d origin = Vector3d::Zero();    
+    Vector3d origin = Vector3d::Zero(); 
+
+    Vector3d rotation, translation;
+
+    vector<VectorXd> no_fly_zone;   
 
     Vector3d get_pc_pose(int idx)
     {
@@ -108,21 +114,40 @@ class rrtstar
         Node* step_node = new Node;
     
         // Provide to .2 decimals
-        srand((unsigned)(ros::Time::now().toNSec()));
+        srand((unsigned)(ros::WallTime::now().toNSec()));
         double random_x = (double)rand() / (INT_MAX + 1.0);
-        (random_node->position).x() = random_x * map_size.x() - map_size.x()/2 + origin.x() + 1;
+        (random_node->position).x() = random_x * map_size.x() - map_size.x()/2;
+        
 
-        srand((unsigned)(ros::Time::now().toNSec()));
+        srand((unsigned)(ros::WallTime::now().toNSec()));
         double random_y = (double)rand() / (INT_MAX + 1.0);
-        (random_node->position).y() = random_y * map_size.y() - map_size.y()/2 + origin.y() + 1;
+        (random_node->position).y() = random_y * map_size.y() - map_size.y()/2;
+        
+        Vector3d transformed_vector = Vector3d((random_node->position).x(),
+                (random_node->position).y(), 0);
+        for (int i = 0; i < no_fly_zone.size(); i++)
+        {
+            // x_min, x_max, y_min, y_max in original frame
+            double x_min = no_fly_zone[i][0], x_max = no_fly_zone[i][1];
+            double y_min = no_fly_zone[i][2], y_max = no_fly_zone[i][3];
+            
+            // Let us transform the point back to original frame
+            geometry_msgs::Point n_tmp_path = backward_transform_point(
+            vector_to_point(transformed_vector), rotation, translation);
+
+            // Reject point if it is in no fly zone
+            if ( n_tmp_path.x <= x_max && n_tmp_path.x >= x_min &&
+                n_tmp_path.y <= y_max && n_tmp_path.y >= y_min)
+                return;
+        }
 
         // Constrain height within the min-max range
-        srand((unsigned)(ros::Time::now().toNSec()));
+        srand((unsigned)(ros::WallTime::now().toNSec()));
         double random_z = (double)rand() / (INT_MAX + 1.0);
-        double tmp =  random_z * map_size.z() - map_size.z()/2 + origin.z() + 1;
+        double tmp =  random_z * map_size.z() - map_size.z()/2 + origin.z();
         tmp = max(tmp, _min_height);
         tmp = min(tmp, _max_height);
-        (random_node->position).z() = tmp;
+        (random_node->position).z() = tmp;        
 
         // printf("%srandom_xyz %s %lf %lf %lf %s\n", 
         //     KBLU, KNRM, random_x, random_y, random_z, KBLU);
@@ -132,7 +157,30 @@ class rrtstar
         if((separation(random_node->position, nodes[index]->position)) < step_size)
             return;
         else
+        {
             step_node->position = stepping(nodes[index]->position, random_node->position);
+            Vector3d transformed_vector = Vector3d(step_node->position.x(),
+                step_node->position.y(), step_node->position.z());
+            // Let us transform the point back to original frame
+            geometry_msgs::Point n_tmp_path = backward_transform_point(
+                vector_to_point(transformed_vector), rotation, translation);
+            for (int i = 0; i < no_fly_zone.size(); i++)
+            {
+                // x_min, x_max, y_min, y_max in original frame
+                double x_min = no_fly_zone[i][0], x_max = no_fly_zone[i][1];
+                double y_min = no_fly_zone[i][2], y_max = no_fly_zone[i][3];
+                
+                // Reject point if it is in no fly zone
+                if ( n_tmp_path.x <= x_max && n_tmp_path.x >= x_min &&
+                    n_tmp_path.y <= y_max && n_tmp_path.y >= y_min)
+                {
+                    // printf("%sRejected x %lf y %lf!\n", KRED, n_tmp_path.x, n_tmp_path.y);
+                    return;
+                }
+                // printf("%sAccepted x %lf y %lf!\n", KGRN, n_tmp_path.x, n_tmp_path.y);
+                    
+            }
+        }
         
         bool flag = check_validity(nodes[index]->position, step_node->position);
 
@@ -141,20 +189,7 @@ class rrtstar
             nodes[total_nodes++] = step_node;
             step_node->parent = nodes[index];
             (nodes[index]->children).push_back(step_node);
-            // line(img, Point((stepnode->position).y, (stepnode->position).x), Point(nodes[index]->position.y, nodes[index]->position.x), Scalar(0, 255, 255), 2, 8);
-            // for(int i= step_node->position.x() - 2; 
-            //     i < step_node->position.x() + 2; i++)
-            // {
-                // for(int j=step_node->position.y() - 2; j < stepnode->position.y + 2; j++)
-                // {
-                //     if((i<0) || (i>400) || (j<0) || (j>400))
-                //         continue;
-
-                //     img.at<Vec3b>(i, j)[0] = 0;
-                //     img.at<Vec3b>(i, j)[1] = 255;
-                //     img.at<Vec3b>(i, j)[2] = 0;
-                // }
-            // }
+            
             if((check_validity(step_node->position, end_node.position)) && 
                 (separation(step_node->position,end_node.position) < step_size/1.5))
             {
@@ -163,7 +198,7 @@ class rrtstar
                 nodes[total_nodes++] = &end_node;
                 end_node.parent = step_node;
                 (nodes[total_nodes-1]->children).push_back(&end_node);
-                // draw_path();
+                return;
             }
         }
         iter++;
@@ -254,7 +289,7 @@ class rrtstar
         line_vector = MatrixXd::Zero(3, n);
         for (int i = 0; i < 3; i++)
         {
-            line_vector.row(i) = _common_utils.linspace(p[i], q[i], (double)n);
+            line_vector.row(i) = linspace(p[i], q[i], (double)n);
         }
         int column_size = line_vector.cols();
 
@@ -273,15 +308,15 @@ class rrtstar
             
 
             // ------ Optimization on PCL ------
-            tmp_obs = _common_utils.pcl2_filter_ptr(local_obs, tmp, 
+            tmp_obs = pcl2_filter_ptr(local_obs, tmp, 
                 Vector3d(2*step_size, 2*step_size, 2*step_size));
             size_t num_points = tmp_obs->size();
             int total = static_cast<int>(num_points);
-            // printf("%s[rrtstar.h] tmp_obs size %d! \n", KGRN, total);
+            // printf("%s[rrt_standalone.h] tmp_obs size %d! \n", KGRN, total);
 
             size_t t_num_points = obs->size();
             int t_total = static_cast<int>(t_num_points);
-            // printf("%s[rrtstar.h] obs size %d! \n", KGRN, t_total);
+            // printf("%s[rrt_standalone.h] obs size %d! \n", KGRN, t_total);
             
             
             if (total == 0)
@@ -325,93 +360,79 @@ class rrtstar
         return true;    
     }
 
+    VectorXd linspace(double min, double max, double n)
+    {
+        VectorXd linspaced((int)n);
+        double delta = (max - min) / (n - 1.0);
+        linspaced(0) = min;
+        
+        for (int i = 1; i < (int)n; i++)
+        {
+            linspaced(i) = (linspaced(i-1) + delta);
+        }
+        return linspaced;
+    }
+
+    /* 
+    * @brief Convert point cloud from ROS sensor message to 
+    * pcl point ptr
+    */
+    pcl::PointCloud<pcl::PointXYZ>::Ptr 
+        pcl2_converter(sensor_msgs::PointCloud2 _pc)
+    {
+        pcl::PCLPointCloud2 pcl_pc2;
+        pcl_conversions::toPCL(_pc, pcl_pc2);
+
+        pcl::PointCloud<pcl::PointXYZ>::Ptr tmp_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+        
+        pcl::fromPCLPointCloud2(pcl_pc2, *tmp_cloud);
+        
+        return tmp_cloud;
+    }
+
+    /* 
+    * @brief Filter point cloud with the dimensions given
+    */
+    pcl::PointCloud<pcl::PointXYZ>::Ptr 
+        pcl2_filter_ptr(pcl::PointCloud<pcl::PointXYZ>::Ptr _pc, 
+        Vector3d centroid, Vector3d dimension)
+    {   
+        pcl::PointCloud<pcl::PointXYZ>::Ptr output(new pcl::PointCloud<pcl::PointXYZ>);
+
+        float minX = centroid.x() - dimension.x()/2;
+        float maxX = centroid.x() + dimension.x()/2;
+
+        float minY = centroid.y() - dimension.y()/2;
+        float maxY = centroid.y() + dimension.y()/2;
+
+        float minZ = centroid.z() - dimension.z()/2;
+        float maxZ = centroid.z() + dimension.z()/2;
+
+        pcl::CropBox<pcl::PointXYZ> box_filter;
+        box_filter.setMin(Eigen::Vector4f(minX, minY, minZ, 1.0));
+        box_filter.setMax(Eigen::Vector4f(maxX, maxY, maxZ, 1.0));
+
+        box_filter.setInputCloud(_pc);
+        box_filter.filter(*output);
+
+        // printf("%s[rrt_standalone.h] return fromPCLPointCloud2! \n", KBLU);
+        return output;
+    }
 
 
     public:
 
     bool error;
     // constructor
-    rrtstar()
+    rrt_node()
     {
         cout<<"Constructor called"<<endl;
     }
  
     // destructor
-    ~rrtstar()
+    ~rrt_node()
     {
         cout<<"Destructor called"<<endl;
-    }
-
-
-    // Used for pcl2 and adapted from 
-    // https://pcl.readthedocs.io/projects/tutorials/en/latest/kdtree_search.html
-    bool kdtree_pcl(Vector3d point, sensor_msgs::PointCloud2 _pc, double c)
-    {
-        pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
-
-        pcl::PointCloud<pcl::PointXYZ>::Ptr _obs = _common_utils.pcl2_converter(_pc);
-        kdtree.setInputCloud(_obs);
-
-        pcl::PointXYZ searchPoint;
-        searchPoint.x = point.x();
-        searchPoint.y = point.y();
-        searchPoint.z = point.z();
-
-        // K nearest neighbor search
-
-        // int K = 5;
-
-        // std::vector<int> pointIdxNKNSearch(K);
-        // std::vector<float> pointNKNSquaredDistance(K);
-
-        // std::cout << KGRN << "K nearest neighbor search at (" << searchPoint.x 
-        //             << " " << searchPoint.y 
-        //             << " " << searchPoint.z
-        //             << ") with K=" << K << std::endl;
-
-        // if ( kdtree.nearestKSearch (searchPoint, K, pointIdxNKNSearch, pointNKNSquaredDistance) > 0 )
-        // {
-        //     for (std::size_t i = 0; i < pointIdxNKNSearch.size (); ++i)
-        //     std::cout << "    "  <<   (*_obs)[ pointIdxNKNSearch[i] ].x 
-        //                 << " " << (*_obs)[ pointIdxNKNSearch[i] ].y 
-        //                 << " " << (*_obs)[ pointIdxNKNSearch[i] ].z 
-        //                 << " (squared distance: " << pointNKNSquaredDistance[i] << ")" << std::endl;
-        // }
-
-        // We will use seach neighbours within radius, this provides what we need
-        // Neighbors within radius search
-
-        std::vector<int> pointIdxRadiusSearch;
-        std::vector<float> pointRadiusSquaredDistance;
-
-        // float radius = 256.0f * rand () / (RAND_MAX + 1.0f);
-
-        float radius = (float)c;
-
-        // std::cout << "Neighbors within radius search at (" << searchPoint.x 
-        //             << " " << searchPoint.y 
-        //             << " " << searchPoint.z
-        //             << ") with radius=" << radius << std::endl;
-
-        size_t t_num_points = _obs->size();
-        int t_total = static_cast<int>(t_num_points);
-        printf("%s[rrtstar.h] obs size %d! \n", KGRN, t_total);
-
-        if ( kdtree.radiusSearch (searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance) > 0 )
-        {
-            // for (std::size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
-            // {
-            //     // std::cout << "    "  <<   (*_obs)[ pointIdxRadiusSearch[i] ].x 
-            //     //             << " " << (*_obs)[ pointIdxRadiusSearch[i] ].y 
-            //     //             << " " << (*_obs)[ pointIdxRadiusSearch[i] ].z 
-            //     //             << " (squared distance: " << pointRadiusSquaredDistance[i] << ")" << std::endl;
-            //     return true;
-            // }
-        }
-        if ((int)pointIdxRadiusSearch.size() > 0)
-            return true;
-        else
-            return false;
     }
 
     bool kdtree_pcl(Vector3d point, pcl::PointCloud<pcl::PointXYZ>::Ptr _obs,
@@ -426,9 +447,6 @@ class rrtstar
         searchPoint.y = point.y();
         searchPoint.z = point.z();
 
-        // We will use seach neighbours within radius, this provides what we need
-        // Neighbors within radius search
-
         std::vector<int> pointIdxRadiusSearch;
         std::vector<float> pointRadiusSquaredDistance;
 
@@ -436,57 +454,16 @@ class rrtstar
 
         float radius = (float)c;
 
-        // std::cout << "Neighbors within radius search at (" << searchPoint.x 
-        //             << " " << searchPoint.y 
-        //             << " " << searchPoint.z
-        //             << ") with radius=" << radius << std::endl;
-
-
         if ( kdtree.radiusSearch (searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance) > 0 )
         {
             for (std::size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
             {
-                // std::cout << "    "  <<   (*_obs)[ pointIdxRadiusSearch[i] ].x 
-                //             << " " << (*_obs)[ pointIdxRadiusSearch[i] ].y 
-                //             << " " << (*_obs)[ pointIdxRadiusSearch[i] ].z 
-                //             << " (squared distance: " << pointRadiusSquaredDistance[i] << ")" << std::endl;
                 return true;
             }
         }
 
         return false;
     }
-
-    // void initialize(Vector3d _start, 
-    //     Vector3d _end, 
-    //     sensor_msgs::PointCloud2 _pc,
-    //     Vector3d _map_size,
-    //     Vector3d _origin,
-    //     double _step_size,
-    //     double _obs_threshold,
-    //     int _line_search_division)
-    // {
-    //     // printf("%s[rrtstar.h] Key Variables! \n", KBLU);
-    //     start_node.position = _start;
-    //     start_node.parent = NULL;
-    //     total_nodes = 0;
-
-    //     nodes[total_nodes++] = &start_node;
-    //     end_node.position = _end;
-
-    //     // printf("%s[rrtstar.h] PCL conversion! \n", KBLU);
-    //     obs = _common_utils.pcl2_converter(_pc);
-    //     obs_threshold = _obs_threshold;
-
-    //     // printf("%s[rrtstar.h] Map parameters! \n", KBLU);
-    //     map_size = _map_size;
-    //     origin = _origin;
-    //     step_size = _step_size;
-    //     iter = 0;
-    //     line_search_division = _line_search_division;
-    //     printf("%s[rrtstar.h] Initialized! \n", KBLU);
-    //     srand(time(NULL));
-    // }
 
     void initialize(Vector3d _start, 
         Vector3d _end, 
@@ -498,14 +475,24 @@ class rrtstar
         double min_height,
         double max_height,
         int _line_search_division,
-        double _timeout)
+        double _timeout,
+        vector<VectorXd> _no_fly_zone,
+        Vector3d _rotation,
+        Vector3d _translation)
     {
-        // printf("%s[rrtstar.h] Key Variables! \n", KBLU);
+        // printf("%s[rrt_standalone.h] Key Variables! \n", KBLU);
         start_node.position = _start;
         start_node.parent = NULL;
         total_nodes = 0;
         reached = false;
         timeout = _timeout;
+
+        no_fly_zone.clear(); 
+        no_fly_zone = _no_fly_zone;
+        printf("%s[rrt_standalone.h] no_fly_zone size %d! \n", KBLU, no_fly_zone.size());
+
+        rotation = _rotation;
+        translation = _translation;
 
         // Reset and clear the nodes
         for (int i = 0; i < max_nodes; i++)
@@ -520,7 +507,7 @@ class rrtstar
         nodes[total_nodes++] = &start_node;
         end_node.position = _end;
 
-        // printf("%s[rrtstar.h] PCL conversion! \n", KBLU);
+        // printf("%s[rrt_standalone.h] PCL conversion! \n", KBLU);
         // obs(new pcl::PointCloud<pcl::PointXYZ>);
         obs = _pc;
         obs_threshold = _obs_threshold;
@@ -528,13 +515,13 @@ class rrtstar
         _min_height = min_height;
         _max_height = max_height;
 
-        // printf("%s[rrtstar.h] Map parameters! \n", KBLU);
+        // printf("%s[rrt_standalone.h] Map parameters! \n", KBLU);
         map_size = _map_size;
         origin = _origin;
         step_size = _step_size;
         iter = 0;
         line_search_division = _line_search_division;
-        printf("%s[rrtstar.h] Initialized! \n", KBLU);
+        printf("%s[rrt_standalone.h] Initialized! \n", KBLU);
         // srand(time(NULL));
     }
 
@@ -544,16 +531,16 @@ class rrtstar
         int total = static_cast<int>(num_points);
         double prev = ros::Time::now().toSec();
         double fail_timer = ros::Time::now().toSec();
-        printf("%s[rrtstar.h] Obstacle size %d! \n", KGRN, total);
-        printf("%s[rrtstar.h] Start run process! \n", KGRN);
+        printf("%s[rrt_standalone.h] Obstacle size %d! \n", KGRN, total);
+        printf("%s[rrt_standalone.h] Start run process! \n", KGRN);
         
         while(!reached)
         {
             rrt();
             if (total_nodes > max_nodes || ros::Time::now().toSec() - fail_timer > timeout)
             {
-                printf("%s[rrtstar.h] Failed run process! \n", KRED);
-                printf("%s[rrtstar.h] Exceeded max nodes or runtime too long! \n", KRED);
+                printf("%s[rrt_standalone.h] Failed run process! \n", KRED);
+                printf("%s[rrt_standalone.h] Exceeded max nodes or runtime too long! \n", KRED);
                 error = true;
                 break;
             }

@@ -88,6 +88,11 @@ include_directories(
 add_executable(${PROJECT_NAME}_test_node 
 src/main.cpp
 )
+
+add_executable(${PROJECT_NAME}_standalone 
+src/rrt.cpp
+)
+
 add_executable(${PROJECT_NAME}_visualization_node 
 src/visualization/rrtstar_visualization.cpp
 )
@@ -111,6 +116,11 @@ src/visualization/rrtstar_visualization.cpp
 target_link_libraries(${PROJECT_NAME}_test_node
   ${catkin_LIBRARIES}
 )
+
+target_link_libraries(${PROJECT_NAME}_standalone
+  ${catkin_LIBRARIES}
+)
+
 target_link_libraries(${PROJECT_NAME}_visualization_node 
   ${catkin_LIBRARIES}
 )

@@ -1,0 +1,21 @@
+<launch>
+
+<!-- Publish PCL using : -->
+<!-- rosrun pcl_ros pcd_to_pointcloud <pcl_file_name>.pcd 0.1 _frame_id:=/map -->
+
+<!-- Launch RViz with the demo configuration -->
+<node name="rviz" pkg="rviz" type="rviz"
+  args="-d $(find rrtstar_ros)/competition/competition_display_pcd.rviz"
+  />
+
+<node pkg="rrtstar_ros" type="rrtstar_ros_test_node" name="rrtstar_ros_node" output="screen">
+  <param name="file_location" type="string" value="$(find rrtstar_ros)/competition/point_competition_pcd.csv"/>
+  <rosparam command="load" file="$(find rrtstar_ros)/competition/rrt_competition.yaml" />
+  <remap from="/pcl" to="/cloud_pcd"/>
+</node>
+
+<node pkg="rrtstar_ros" type="rrtstar_ros_visualization_node" name="rrtstar_ros_visualization" output="screen">
+
+</node>
+
+</launch>

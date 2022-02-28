@@ -60,7 +60,7 @@ class constrain
 {   
     private:
         
-        double max_boundaries, corridor_size, safety_radius; 
+        double corridor_size, safety_radius, fallback_corridor; 
         int division;
         pcl::PointCloud<pcl::PointXYZ>::Ptr input_pcl;
         pcl::PointCloud<pcl::PointXYZ>::Ptr query_pcl;
@@ -72,13 +72,14 @@ class constrain
     std::vector<Vector3d> rotation;
     std::vector<double> time;
 
-    void query_point_contrains(std::vector<Vector3d> point_vector, pcl::PointCloud<pcl::PointXYZ>::Ptr _pc, double _max_boundaries, double _corridor_size, int _division, double _safety_radius)
+
+    void query_point_contrains(std::vector<Vector3d> point_vector, pcl::PointCloud<pcl::PointXYZ>::Ptr _pc, double _corridor_size, int _division, double _safety_radius, double _fallback_corridor)
     {
         rotation.clear(); max_constrain.clear(); 
         min_constrain.clear(); time.clear();
         flag = 0;
 
-        max_boundaries = _max_boundaries;
+        fallback_corridor = _fallback_corridor;
         input_pcl = _pc;
         division = _division;
         corridor_size = _corridor_size;
@@ -93,16 +94,34 @@ class constrain
         {
             double single_prev = ros::Time::now().toSec();
             query_pcl = input_pcl;
+            
             // Find the rotation vector
             Vector3d rot_vec = point_vector[i] - point_vector[i-1];
+            rot_vec = rot_vec / rot_vec.norm();
             double yaw_deg = atan2(rot_vec.y(), rot_vec.x()) / 3.1415926535 * 180;
             double xy = sqrt(pow(rot_vec.x(),2) + pow(rot_vec.y(),2));
             double pitch_deg = atan2(rot_vec.z(), xy) / 3.1415926535 * 180;
             printf("%s[lbfgs_pcl_constrain.h] Pitch %lf\n", 
                 KCYN, pitch_deg);
+
+            double pitch = atan2(rot_vec.z(), xy);
+            double yaw = atan2(rot_vec.y(), rot_vec.x());    
+            Quaterniond q2 = AngleAxisd(0.0, Vector3d::UnitX())
+                * AngleAxisd(-pitch, Vector3d::UnitY())
+                * AngleAxisd(0.0, Vector3d::UnitZ());
+
+            Quaterniond q1 = AngleAxisd(0.0, Vector3d::UnitX())
+                * AngleAxisd(0.0, Vector3d::UnitY())
+                * AngleAxisd(yaw, Vector3d::UnitZ());
             
+            Quaterniond fq = q1*q2;
+            Vector3d rotation_vector = fq.toRotationMatrix().eulerAngles(0, 1, 2);
+            rotation_vector = rotation_vector / 3.1415926535 * 180;
+            printf("%s[lbfgs_pcl_constrain.h] Rotation [%lf %lf %lf]\n", 
+                KCYN, rotation_vector.x(), rotation_vector.y(), rotation_vector.z());
+            // rotation_vector.z() = yaw_deg;
             // NWU = RPY
-            Vector3d rotation_vector = Vector3d(0, -pitch_deg, yaw_deg);
+            // Vector3d rotation_vector = Vector3d(0, -pitch_deg, yaw_deg);
             rotation.push_back(rotation_vector);
             // Query point cloud transform from original frame
             double t_pcl_prev = ros::Time::now().toSec();
@@ -148,11 +167,12 @@ class constrain
         vector<Vector3d> search_vectors = linspace_vector3(np1, np0, division);
 
         Vector3d tmp_dimension;
-        tmp_dimension.x() = abs(new_vec.x()) + 2 * max_boundaries;
-        tmp_dimension.y() = abs(new_vec.y()) + 2 * max_boundaries;
-        tmp_dimension.z() = abs(new_vec.z()) + 2 * max_boundaries;
+        tmp_dimension.x() = abs(new_vec.x()) + 2 * corridor_size;
+        tmp_dimension.y() = abs(new_vec.y()) + 2 * corridor_size;
+        tmp_dimension.z() = abs(new_vec.z()) + 2 * corridor_size;
 
         // Center of these 2 points = new_vec / 2;
+        // Filter to the area around the 2 points
         double filter1_prev = ros::Time::now().toSec(); 
         query_pcl = pcl_filter(query_pcl, new_vec / 2, tmp_dimension);
         printf("%s[lbfgs_pcl_constrain.h] Total time %lf for pcl filter1\n", 
@@ -172,8 +192,8 @@ class constrain
                 // search_vectors[i]
                 double nearest_point = kdtree_pcl_knn(search_vectors[i], query_pcl);
                 printf("%s[lbfgs_pcl_constrain.h] nearest_point %lf\n", KCYN, nearest_point);
-                // nearest_point cannot be more than max_boundaries and cannot be smaller than safety radius
-                double boundary = std::min(std::max(nearest_point - safety_radius, 0.1), corridor_size);
+                // nearest_point cannot be more than corridor_size and cannot be smaller than safety radius
+                double boundary = std::min(std::max(nearest_point - safety_radius, fallback_corridor), corridor_size);
                 safe_radius.push_back(boundary);
             }    
         }
@@ -182,7 +202,7 @@ class constrain
         {
             for (int i = 0; i < division; i++)
             {
-                // nearest_point cannot be more than max_boundaries and also 
+                // nearest_point cannot be more than corridor_size and also 
                 double boundary = corridor_size;
                 safe_radius.push_back(boundary);
             }
@@ -215,9 +235,9 @@ class constrain
         k = abs(new_vec.x()) + 2 * sin(45.0/180.0 * 3.1415) * half_h;
         m = 2 * sin(45.0/180.0 * 3.1415) * half_h;
 
-        printf("%s[lbfgs_pcl_constrain.h] yh value %lf | %lf\n", KBLU, h, abs(new_vec.y()) + 2 * max_boundaries);
-        printf("%s[lbfgs_pcl_constrain.h] xk value %lf | %lf\n", KBLU, k, abs(new_vec.x()) + 2 * max_boundaries);
-        printf("%s[lbfgs_pcl_constrain.h] zm value %lf | %lf\n", KBLU, m, abs(new_vec.z()) + 2 * max_boundaries);
+        printf("%s[lbfgs_pcl_constrain.h] yh value %lf | %lf\n", KBLU, h, abs(new_vec.y()) + 2 * corridor_size);
+        printf("%s[lbfgs_pcl_constrain.h] xk value %lf | %lf\n", KBLU, k, abs(new_vec.x()) + 2 * corridor_size);
+        printf("%s[lbfgs_pcl_constrain.h] zm value %lf | %lf\n", KBLU, m, abs(new_vec.z()) + 2 * corridor_size);
 
         // Center of these 2 points = new_vec / 2; 
         // new dimension are used for cropping 
@@ -234,6 +254,12 @@ class constrain
             size_t num_points = query_pcl->size();
             int total = static_cast<int>(num_points);
             printf("%s[lbfgs_pcl_constrain.h] %d Points inside Bounding Box! \n", KRED, total);
+
+            // We use the fallback if there is collision detected
+            half_h = fallback_corridor;
+            h = 2 * half_h;
+            k = abs(new_vec.x()) + 2 * sin(45.0/180.0 * 3.1415) * half_h;
+            m = 2 * sin(45.0/180.0 * 3.1415) * half_h;
             // return;
         }
         printf("%s[lbfgs_pcl_constrain.h] Total time %lf for pcl query\n", 
@@ -266,7 +292,7 @@ class constrain
         if (isnan(abs(h)))
         {
             flag++;
-            h = 0.1;
+            h = fallback_corridor;
         }
 
         return h;

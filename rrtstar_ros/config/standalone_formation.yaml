@@ -1,0 +1,14 @@
+# RRT Parameters
+step_size: 2.0
+obs_threshold: 5.5
+
+xybuffer: 0.0
+zbuffer: 5.0
+passage_size: 0.5
+
+min_height: 0.7
+max_height: 4.5
+
+max_tries: 20
+timeout: 0.8
+z_scale: 5.5

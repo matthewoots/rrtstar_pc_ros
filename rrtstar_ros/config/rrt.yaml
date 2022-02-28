@@ -20,3 +20,6 @@ max_boundaries: 3.0
 corridor_size: 1.5
 division: 4
 safety_radius: 1.3
+
+max_tries: 10
+timeout: 0.3

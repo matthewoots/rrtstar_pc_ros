@@ -49,26 +49,32 @@
 using namespace std;
 using namespace Eigen;
 
-ros::Publisher rrt_marker_pub, start_end_marker_pub, bs_marker_pub, constrains_marker_pub;
+ros::Publisher rrt_marker_pub, start_end_marker_pub, bs_marker_pub;
+ros::Publisher ellipsoid_marker_pub, constrains_marker_pub;
 ros::Subscriber bs_message, rrt_message, start_end_message, bounding_box_message;
+
+double _obs_threshold, _scale_z;
 
 void rrt_callback(const rrtstar_ros::point_array::ConstPtr &msg)
 {
   rrtstar_ros::point_array rrt = *msg;
 
-  visualization_msgs::Marker rrt_points, line_strip;
-  rrt_points.header.frame_id = line_strip.header.frame_id = "/map";
-  rrt_points.header.stamp = line_strip.header.stamp = ros::Time::now();
-  rrt_points.ns = line_strip.ns = "rrt_visualization_points";
-  rrt_points.action = line_strip.action = visualization_msgs::Marker::ADD;
-  rrt_points.pose.orientation.w = line_strip.pose.orientation.w = 1.0;
+  visualization_msgs::Marker rrt_points, line_strip, ellipsoid;
+  rrt_points.header.frame_id = line_strip.header.frame_id = 
+    ellipsoid.header.frame_id = "/map";
+  rrt_points.header.stamp = line_strip.header.stamp = 
+    ellipsoid.header.stamp = ros::Time::now();
+  rrt_points.ns = line_strip.ns = ellipsoid.ns = "rrt_visualization_points";
+  rrt_points.action = line_strip.action = ellipsoid.action = visualization_msgs::Marker::ADD;
+  rrt_points.pose.orientation.w = line_strip.pose.orientation.w =
+    ellipsoid.pose.orientation.w = 1.0;
 
   rrt_points.id = 0;
   line_strip.id = 1;
 
   rrt_points.type = visualization_msgs::Marker::POINTS;
   line_strip.type = visualization_msgs::Marker::LINE_STRIP;
-
+  ellipsoid.type = visualization_msgs::Marker::SPHERE;
 
   // POINTS markers use x and y scale for width/height respectively
   rrt_points.scale.x = 0.2;
@@ -98,6 +104,17 @@ void rrt_callback(const rrtstar_ros::point_array::ConstPtr &msg)
 
     rrt_points.points.push_back(p);
     line_strip.points.push_back(p);
+
+    ellipsoid.id = i;
+    ellipsoid.scale.x = _obs_threshold;
+    ellipsoid.scale.y = _obs_threshold;
+    ellipsoid.scale.z = (1 /_scale_z) * _obs_threshold;
+    // Ellipsoid color
+    ellipsoid.color.b = 1.0f;
+    ellipsoid.color.a = 0.5f;
+    ellipsoid.pose.position = p;
+
+    ellipsoid_marker_pub.publish(ellipsoid);
   }
 
   rrt_marker_pub.publish(rrt_points);
@@ -125,7 +142,7 @@ void constrain_callback(const rrtstar_ros::bounding_box_array::ConstPtr &msg)
     bb_points.color.r = 1.0f;
     bb_points.color.g = 0.0f;
     bb_points.color.b = 0.0f;
-    bb_points.color.a = 0.5f;
+    bb_points.color.a = 0.3f;
 
     Vector3d box_difference;
     box_difference.x() = bb_array.array[i].max.x - bb_array.array[i].min.x;
@@ -262,11 +279,12 @@ void start_end_callback(const rrtstar_ros::start_end_markers::ConstPtr &msg)
 int main( int argc, char** argv )
 {
   double rate = 1.0;
-  int _size;  
+  
   ros::init(argc, argv, "rrtstar_visualization");
   ros::NodeHandle n("~");
   
-  n.param<int>("marker_size", _size, 4);
+  n.param<double>("obs_threshold", _obs_threshold, 1.0);
+  n.param<double>("z_scale", _scale_z, 1.0);
 
   bs_marker_pub = n.advertise<visualization_msgs::Marker>(
         "/bs_visualization_marker", 10);
@@ -276,6 +294,8 @@ int main( int argc, char** argv )
         "/start_end_visualization_marker", 10);
   constrains_marker_pub = n.advertise<visualization_msgs::Marker>(
         "/constrains_visualization_marker", 10);
+  ellipsoid_marker_pub = n.advertise<visualization_msgs::Marker>(
+        "/ellipsoid_visualization_marker", 10);
 
   bs_message = n.subscribe<rrtstar_ros::point_array>(
         "/bs", 10, &bs_callback);      

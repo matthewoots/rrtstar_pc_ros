@@ -1,22 +1,25 @@
 # RRT Parameters
 start_delay: 3.0
-step_size: 1.5
-obs_threshold: 0.9
+step_size: 1.0
+obs_threshold: 0.47
 random_multiplier: 1.0
-line_search_division: 4
+line_search_division: 2
 
-xybuffer: 4.0
-zbuffer: 4.0
-passage_size: 4.5
+xybuffer: 1.5
+zbuffer: 2.5
+passage_size: 2.0
 
-min_height: 1.0
-max_height: 5.0
+min_height: 0.5
+max_height: 2.50
 
 ## Bspline Parameters
-bs_order: 6
+bs_order: 3
 
 ## Box Constrain Parameters
-max_boundaries: 0.7
-corridor_size: 0.6
+corridor_size: 0.35
 division: 4
-safety_radius: 0.5
+safety_radius: 0.20
+fallback_corridor: 0.05
+
+max_tries: 5
+timeout: 2.5

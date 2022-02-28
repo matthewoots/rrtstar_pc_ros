@@ -158,7 +158,7 @@ public:
         Vector3d end_pose = e;
 
         MatrixXd global_cp = _common_utils.setClampedPath(wp, 
-        2, 1, _order, end_pose);
+        1, 0.8, _order, end_pose);
         VectorXd knots = _common_utils.setKnotsPath(global_cp, 1, _order);
         std::vector<Vector3d> bs_tmp = _common_utils.updateFullPath(global_cp, 
             1, _order, knots);
@@ -245,8 +245,10 @@ int main(int argc, char **argv)
     double _bs_order;
     double _passage_size;
 
-    double _max_boundaries, _corridor_size, _safety_radius;
+    double _fallback_corridor, _corridor_size, _safety_radius;
     int _division;
+    int _max_tries;
+    double _timeout;
 
     double tmp_yaw_deg;
     Vector3d translation;
@@ -266,10 +268,13 @@ int main(int argc, char **argv)
 
     _nh.param<double>("bs_order", _bs_order, 1.0);
 
-    _nh.param<double>("max_boundaries", _max_boundaries, 1.0);
     _nh.param<double>("corridor_size", _corridor_size, 1.0);
     _nh.param<double>("safety_radius", _safety_radius, 1.0);
     _nh.param<int>("division", _division, 1.0);
+    _nh.param<double>("fallback_corridor", _fallback_corridor, 0.1);
+
+    _nh.param<int>("max_tries", _max_tries, 1.0);
+    _nh.param<double>("timeout", _timeout, 0.1);
     
     // Sleep for 3 second to let mockamap initialise the map
     ros::Duration(_start_delay).sleep();
@@ -434,15 +439,22 @@ int main(int argc, char **argv)
         rrtstar rrt;
         rrt.error = true;
         int rrt_tries = 0;
-        while (rrt_tries < 10 && rrt.process_status())
+        while (rrt_tries < _max_tries && rrt.process_status())
         {
             // Use for transformed start and end in transformed frame
             rrt.initialize(nstart[i], nend[i], initiator.pc,
                 _map_size, Vector3d(0,0,_origin.z()),
                 _step_size, _obs_threshold,
                 _min_height, _max_height,
-                _line_search_division);
+                _line_search_division, _timeout);
             rrt.run();
+            rrt_tries++;
+        }
+
+        if (rrt_tries > _max_tries)
+        {
+            printf("%s[main.cpp] Will not continue bspline and publishing process! %s\n", KRED, KNRM);
+            return 0;
         }
 
         if (rrt.process_status())
@@ -489,7 +501,7 @@ int main(int argc, char **argv)
         printf("%s[main.cpp] Starting Crop Process %s\n", KGRN, KNRM);
         // Set up constrains using lbfgs_pcl_constrain, this will publish the bounding box vertices
 
-        con.query_point_contrains(initiator.bs, initiator.pc_base, _max_boundaries, _corridor_size, _division, _safety_radius);
+        con.query_point_contrains(initiator.bs, initiator.pc_base, _corridor_size, _division, _safety_radius, _fallback_corridor);
         
         // transformed_path, initiator.pc
         // for (int i = 0; i < transformed_path.size(); i++)
@@ -586,7 +598,7 @@ int main(int argc, char **argv)
     //     printf("%s[main.cpp] Starting Crop Process %s\n", KGRN, KNRM);
     //     // Set up constrains using lbfgs_pcl_constrain, this will publish the bounding box vertices
 
-    //     con.query_point_contrains(initiator.bs, initiator.pc_base, _max_boundaries, _corridor_size, _division, _safety_radius);
+    //     con.query_point_contrains(initiator.bs, initiator.pc_base, _corridor_size, _division, _safety_radius);
         
     //     // transformed_path, initiator.pc
     //     // for (int i = 0; i < transformed_path.size(); i++)
